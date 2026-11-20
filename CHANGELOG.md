@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0 — Experimental FAT32 deleted-entry recovery
+
+- Added `recover-fat32-deleted` for FAT32 root-directory deleted 8.3 entries in regular raw image files.
+- Recovery reads a bounded root-directory chain and writes candidate bytes to a separate empty output directory.
+- Added a Tkinter action with explicit confirmation and a generated FAT32/Ground Truth demo.
+- Recovery assumes contiguous data; LFN, subdirectories, fragmented files, and non-FAT32 deleted entries remain unsupported.
+
 ## 0.9.0 — SQLite carving and ext metadata pilot
 
 - Added contiguous SQLite main-database carving with bounded structural checks and `quick_check` up to 64 MiB.

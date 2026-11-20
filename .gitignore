@@ -50,3 +50,4 @@ desktop.ini
 # Generated SQLite deletion/damage scenario images and scan outputs.
 /examples/recovery_scenario_set_v1/
 /examples/ext4_structure_demo/*.img
+/examples/fat32_deleted_demo/

@@ -14,6 +14,7 @@ from typing import Any
 
 from pdrs.carve import carve_image
 from pdrs.evaluation import EvaluationResult, GroundTruthRecord, evaluate_ground_truth, load_ground_truth, write_evaluation
+from pdrs.fat32_recovery import Fat32RecoveryResult, recover_deleted_fat32
 from pdrs.manifest import write_manifest
 from pdrs.reporting import build_experiment_report, write_new_report
 from pdrs.structure import ImageStructure, format_report, inspect_image, report_json
@@ -152,10 +153,14 @@ class PDRSApp:
             actions, text="查看镜像结构", command=self._inspect_structure
         )
         self.inspect_button.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        self.recover_fat32_button = ttk.Button(
+            actions, text="FAT32误删恢复（实验）", command=self._start_fat32_recovery
+        )
+        self.recover_fat32_button.grid(row=0, column=2, sticky="w", padx=(8, 0))
         self.progress = ttk.Progressbar(actions, mode="indeterminate", length=200)
-        self.progress.grid(row=0, column=2, sticky="ew", padx=(16, 12))
-        ttk.Label(actions, textvariable=self.status, anchor="w").grid(row=0, column=3, sticky="e")
-        actions.columnconfigure(2, weight=1)
+        self.progress.grid(row=0, column=3, sticky="ew", padx=(16, 12))
+        ttk.Label(actions, textvariable=self.status, anchor="w").grid(row=0, column=4, sticky="e")
+        actions.columnconfigure(3, weight=1)
 
         results = ttk.LabelFrame(page, text="扫描结果", padding=12)
         results.grid(row=3, column=0, sticky="nsew")
@@ -223,7 +228,7 @@ class PDRSApp:
 
         ttk.Label(
             page,
-            text="支持 BMP、JPEG、PNG、PDF、SQLite 连续文件雕刻；可查看 MBR/GPT、FAT32、exFAT 与 ext 卷元数据。不会遍历目录、恢复删除记录或重组碎片文件。",
+            text="支持 BMP、JPEG、PNG、PDF、SQLite 连续雕刻；FAT32误删恢复仅实验性支持根目录8.3项和连续数据。不会访问物理磁盘或重组碎片文件。",
             style="SubTitle.TLabel",
             wraplength=980,
         ).grid(row=4, column=0, sticky="w", pady=(12, 0))
@@ -367,6 +372,93 @@ class PDRSApp:
         if value is False:
             return "未通过"
         return "未检查"
+
+    def _start_fat32_recovery(self) -> None:
+        if self._busy:
+            return
+        image_text = self.image_path.get().strip()
+        output_text = self.output_path.get().strip()
+        source = Path(image_text).expanduser()
+        output = Path(output_text).expanduser()
+        if not source.is_file():
+            messagebox.showerror("镜像无效", "请选择一个存在的常规镜像文件。", parent=self.root)
+            return
+        if not output_text:
+            messagebox.showerror("缺少输出目录", "请选择一个新的空输出目录。", parent=self.root)
+            return
+        try:
+            if output.resolve() == source.resolve(strict=True).parent:
+                raise ValueError("输出目录不能是镜像文件所在目录。")
+            if output.exists() and not output.is_dir():
+                raise ValueError("输出路径已存在，但不是目录。")
+            if output.exists() and any(output.iterdir()):
+                raise ValueError("输出目录必须为空，请选择一个新的空目录。")
+        except (OSError, ValueError) as error:
+            messagebox.showerror("输出目录不可用", str(error), parent=self.root)
+            return
+        ground_truth_records: list[GroundTruthRecord] | None = None
+        ground_truth_text = self.ground_truth_path.get().strip()
+        if ground_truth_text:
+            ground_truth_file = Path(ground_truth_text).expanduser()
+            if not ground_truth_file.is_file():
+                messagebox.showerror("Ground truth 无效", "请选择一个存在的 CSV 文件。", parent=self.root)
+                return
+            try:
+                ground_truth_records = load_ground_truth(ground_truth_file, source.name)
+            except ValueError as error:
+                messagebox.showerror("Ground truth 无法使用", str(error), parent=self.root)
+                return
+
+        confirmed = messagebox.askyesno(
+            "实验性 FAT32 恢复",
+            "将只读检查 raw 镜像中的 FAT32 根目录删除短文件名项。\n\n"
+            "仅尝试连续簇数据；不恢复子目录，不重组碎片，也不保证文件内容有效。\n"
+            "请只对自己制作或获准检查的镜像副本操作。继续吗？",
+            parent=self.root,
+        )
+        if not confirmed:
+            return
+
+        self._last_report_context = None
+        self.export_report_button.configure(state="disabled")
+        self._last_output_dir = None
+        self.open_output_button.configure(state="disabled")
+        self.manifest_info.set("")
+        self.result_info.set("FAT32 恢复进行中…")
+        self.summary_info.set("")
+        self.evaluation_info.set("")
+        self.details.set("实验性 FAT32 恢复仅支持根目录删除短文件名项，文件内容假定连续存放。")
+        self._clear_results()
+        self._set_busy(True)
+        self.status.set("正在只读检查 FAT32 根目录…")
+        threading.Thread(
+            target=self._fat32_recovery_worker,
+            args=(source, output, ground_truth_records),
+            daemon=True,
+        ).start()
+
+    def _fat32_recovery_worker(
+        self,
+        source: Path,
+        output: Path,
+        ground_truth_records: list[GroundTruthRecord] | None,
+    ) -> None:
+        try:
+            result = recover_deleted_fat32(source, output)
+            manifest = write_manifest(output.resolve(), result.rows)
+            evaluation: EvaluationResult | None = None
+            comparison_path: Path | None = None
+            summary_path: Path | None = None
+            if ground_truth_records is not None:
+                evaluation = evaluate_ground_truth(ground_truth_records, result.rows)
+                comparison_path, summary_path = write_evaluation(output.resolve(), evaluation)
+            if result.warnings:
+                warning_path = output.resolve() / "recovery_warnings.txt"
+                with warning_path.open("x", encoding="utf-8", newline="\n") as handle:
+                    handle.write("\n".join(result.warnings) + "\n")
+            self._events.put(("fat32_success", (result, manifest, evaluation, comparison_path, summary_path)))
+        except Exception as error:
+            self._events.put(("error", error))
 
     def _start_scan(self) -> None:
         if self._busy:
@@ -552,6 +644,60 @@ class PDRSApp:
                 self._show_selected_details()
             else:
                 self.details.set("没有检测到候选文件。空 manifest 已写入输出目录。")
+        elif event == "fat32_success":
+            result, manifest, evaluation, comparison_path, summary_path = payload
+            self._last_output_dir = manifest.parent.resolve()
+            self.open_output_button.configure(state="normal")
+            self._ground_truth_status = (
+                dict(evaluation.candidate_status) if evaluation is not None else {}
+            )
+            self._has_ground_truth_evaluation = evaluation is not None
+            self._rows_by_filename = {str(row["filename"]): row for row in result.rows}
+            for row in result.rows:
+                filename = str(row["filename"])
+                self.table.insert(
+                    "",
+                    "end",
+                    iid=filename,
+                    values=(
+                        filename,
+                        row["format"],
+                        f"{int(row['offset']):,}",
+                        f"{int(row['size_bytes']):,}",
+                        "完整" if row["complete_boundary"] else "不完整",
+                        self._format_valid(row["format_valid"]),
+                    ),
+                )
+            self.result_info.set("实验性 FAT32 恢复完成")
+            self.summary_info.set(
+                f"删除短文件名项 {result.deleted_entries_seen}    "
+                f"提取候选 {len(result.rows)}    警告 {len(result.warnings)}"
+            )
+            if evaluation is None:
+                self.evaluation_info.set(
+                    "仅扫描 FAT32 根目录 8.3 删除项；提取数据按连续簇假设，格式未验证。"
+                )
+                self.manifest_info.set(f"Manifest：{manifest}")
+            else:
+                summary = evaluation.summary
+                self.evaluation_info.set(
+                    f"Ground truth：精确恢复 {summary['recovered_exact_count']}/"
+                    f"{summary['expected_present_count']}  "
+                    f"候选精确率 {self._format_percent(summary['candidate_precision'])}  "
+                    f"偏移匹配 {summary['offset_match_count']}/{summary['expected_offset_count']}"
+                )
+                self.manifest_info.set(
+                    f"Manifest：{manifest.name}  ·  评估：{summary_path.name}"
+                )
+            self.status.set("FAT32 实验性恢复完成")
+            if result.rows:
+                first = self.table.get_children()[0]
+                self.table.selection_set(first)
+                self._show_selected_details()
+            elif result.warnings:
+                self.details.set("未提取文件。查看输出目录中的 recovery_warnings.txt。")
+            else:
+                self.details.set("没有检测到可提取的 FAT32 根目录删除短文件项。")
         elif event == "error":
             self.status.set("扫描失败")
             self.result_info.set("未生成完整扫描结果")
@@ -679,6 +825,7 @@ class PDRSApp:
         state = "disabled" if busy else "normal"
         self.run_button.configure(state=state)
         self.inspect_button.configure(state=state)
+        self.recover_fat32_button.configure(state=state)
         self.image_button.configure(state=state)
         self.output_button.configure(state=state)
         self.image_paste_button.configure(state=state)

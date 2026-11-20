@@ -14,7 +14,7 @@ The current PDRS prototype carves contiguous BMP, JPEG, PNG, PDF, and SQLite mai
 
 ## Scope and hypothesis
 
-Use only synthetic raw images generated for the experiment. The prototype reads the image in read-only mode and writes results to a separate directory. It does not recover filesystem deletion records, contact physical devices, or reconstruct fragmented files. SQLite WAL replay and deleted-row recovery are also outside scope.
+Use only synthetic raw images generated for the experiment. The prototype reads the image in read-only mode and writes results to a separate directory. The regular carving command does not recover filesystem deletion records, contact physical devices, or reconstruct fragmented files. A separate experimental command handles only deleted FAT32 root-directory short entries and assumes contiguous file data. SQLite WAL replay and deleted-row recovery remain outside scope.
 
 Hypothesis: files stored contiguously with intact headers and valid format terminators will be recovered byte-for-byte more often than truncated files or files whose format markers occur in unrelated payload data. Format-aware boundary rules should reduce false positives compared with header-only extraction.
 
@@ -72,3 +72,8 @@ Use SHA-256 equality to establish exact recovery. File-open success is a separat
 `examples/make_recovery_scenario_set_v1.py` creates a SQLite database and three raw images: intact bytes in a location assumed to be unallocated, one zero-filled 512-byte region in a B-tree page, and an image truncated before the declared database end. `examples/run_recovery_scenario_set_v1.py` records manifests and Ground Truth comparisons. The first condition models loss of directory metadata only; it is not a filesystem-deletion recovery test. Zero-fill and truncation are simulations of missing/corrupted bytes, not tests against physical media or actual unreadable sectors.
 
 When reporting platform compatibility, specify the filesystem and encryption state (for example, NTFS, ext4, F2FS, or APFS), not just Windows, Android, Linux, or Apple. See `docs/RECOVERY_ROADMAP.md` for the current capability matrix and planned milestones.
+
+
+## FAT32 deleted root-entry experiment
+
+The 0.10 pilot builds one synthetic FAT32 volume with a deleted 8.3 root-directory entry and a known source file. `recover-fat32-deleted IMAGE OUTPUT` reads the first FAT and root-directory cluster chain from a regular image file, then extracts files whose deleted short entries carry a first cluster and size. It does not recover the lost leading filename character, process LFN entries or subdirectories, follow fragmented chains, or validate file formats. Compare `manifest.csv` SHA-256 and data offset against the generated `ground_truth.csv`. Do not generalize a one-sample synthetic result to real FAT32 devices.

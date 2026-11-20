@@ -7,10 +7,12 @@ from pathlib import Path
 import typer
 
 from pdrs.carve import carve_image
+from pdrs.evaluation import evaluate_ground_truth, load_ground_truth, write_evaluation
+from pdrs.fat32_recovery import recover_deleted_fat32
 from pdrs.manifest import write_manifest
 from pdrs.structure import format_report, inspect_image, report_json
 
-app = typer.Typer(no_args_is_help=True, help="Read-only recovery research tools")
+app = typer.Typer(no_args_is_help=True, help="Read-only recovery research tools (FAT32 deletion recovery is experimental)")
 
 
 @app.command("inspect")
@@ -24,6 +26,44 @@ def inspect(
     except (OSError, ValueError) as error:
         raise typer.BadParameter(str(error)) from error
     typer.echo(report_json(report) if as_json else format_report(report))
+
+
+@app.command("recover-fat32-deleted")
+def recover_fat32_deleted(
+    image: Path = typer.Argument(..., exists=True, readable=True, help="Raw image file containing a FAT32 volume"),
+    output: Path = typer.Argument(..., help="Empty directory for recovered files and manifest"),
+    ground_truth: Path | None = typer.Option(
+        None, "--ground-truth", exists=True, readable=True, help="Optional Ground Truth CSV for hash/offset comparison"
+    ),
+) -> None:
+    """Experimental: recover deleted FAT32 root-directory 8.3 entries as contiguous data."""
+    try:
+        result = recover_deleted_fat32(image, output)
+        manifest = write_manifest(output, result.rows)
+        evaluation = None
+        if ground_truth is not None:
+            evaluation = evaluate_ground_truth(
+                load_ground_truth(ground_truth, image.name), result.rows
+            )
+            comparison_path, summary_path = write_evaluation(output, evaluation)
+        if result.warnings:
+            warning_path = output / "recovery_warnings.txt"
+            with warning_path.open("x", encoding="utf-8", newline="\n") as handle:
+                handle.write("\n".join(result.warnings) + "\n")
+    except (OSError, ValueError) as error:
+        raise typer.BadParameter(str(error)) from error
+    typer.echo(f"Deleted root entries examined: {result.deleted_entries_seen}")
+    typer.echo(f"Recovered candidates: {len(result.rows)}")
+    typer.echo(f"Manifest: {manifest}")
+    if evaluation is not None:
+        typer.echo(
+            f"Ground Truth exact: {evaluation.summary['recovered_exact_count']}/"
+            f"{evaluation.summary['expected_present_count']}"
+        )
+        typer.echo(f"Comparison: {comparison_path}")
+        typer.echo(f"Summary: {summary_path}")
+    for warning in result.warnings:
+        typer.echo(f"Warning: {warning}", err=True)
 
 
 @app.command()
