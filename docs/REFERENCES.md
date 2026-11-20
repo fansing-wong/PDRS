@@ -1,9 +1,15 @@
 # Implementation references
 
-These references describe the file structures checked by the prototype. PDRS implements only a bounded subset and does not claim full format conformance.
+These references describe structures checked by PDRS. The implementation covers only a bounded subset and does not claim full format conformance.
 
-- Microsoft, [BITMAPFILEHEADER structure](https://learn.microsoft.com/windows/win32/api/wingdi/ns-wingdi-bitmapfileheader): BMP file size and pixel-array offset fields.
-- Microsoft, [BITMAPINFOHEADER structure](https://learn.microsoft.com/windows/win32/api/wingdi/ns-wingdi-bitmapinfoheader): dimensions, planes, bit depth, compression, and image size.
-- Microsoft, [Bitmap Storage](https://learn.microsoft.com/en-us/windows/win32/gdi/bitmap-storage): DIB layout and pixel-array organization.
+- Microsoft, [BITMAPFILEHEADER structure](https://learn.microsoft.com/windows/win32/api/wingdi/ns-wingdi-bitmapfileheader).
+- Microsoft, [BITMAPINFOHEADER structure](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfoheader).
+- Microsoft, [Bitmap Storage](https://learn.microsoft.com/en-us/windows/win32/gdi/bitmap-storage).
+- SQLite, [Database File Format](https://www.sqlite.org/fileformat.html).
+- Linux kernel, [ext4 superblock](https://docs.kernel.org/filesystems/ext4/super.html).
+- Microsoft, [NTFS overview](https://learn.microsoft.com/en-us/windows-server/storage/file-server/ntfs-overview).
+- Android Open Source Project, [File-based encryption](https://source.android.com/docs/security/features/encryption/file-based).
+- Apple, [File system formats available in Disk Utility](https://support.apple.com/guide/disk-utility/file-system-formats-dsku19ed921c/22.7/mac/27).
+- Apple Platform Security, [Data protection overview](https://support.apple.com/guide/security/sec4c6dc1b6e/web).
 
-The BMP validator checks supported header sizes, basic fields, palette/mask offsets, and declared pixel-array bounds. It does not decode pixels, validate all masks, or support every BMP-family variant.
+PDRS validates selected BMP fields, PNG chunks/CRCs/zlib layout, SQLite database headers and (up to 64 MiB) `quick_check`, and selected partition/filesystem metadata. Optional Pillow and pypdf checks are independent parsers for JPEG and PDF. These checks do not prove provenance, authenticity, or successful recovery of a user's original file.

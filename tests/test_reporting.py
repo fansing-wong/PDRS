@@ -67,6 +67,8 @@ class ReportingTests(unittest.TestCase):
             self.assertIn(hashlib.sha256(b"synthetic image").hexdigest(), report)
             self.assertIn("100.00%", report)
             self.assertIn("png_01.png", report)
+            self.assertIn("SQLite", report)
+            self.assertIn("不访问物理磁盘", report)
             target = root / "report.md"
             write_new_report(target, report)
             with self.assertRaises(FileExistsError):

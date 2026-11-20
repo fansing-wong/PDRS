@@ -450,3 +450,8 @@ V11–V23 的正负对照表明，格式内部块结构可帮助恢复特定的�
 - 固定随机背景大小对照分析：`examples/experiment_set_v17/RANDOM_BACKGROUND_SCALE_RESULTS.md`
 - 固定随机背景逐次结果：`examples/experiment_set_v17/results_random_background_scale/sample_details.csv`
 - 固定随机背景大小汇总：`examples/experiment_set_v17/results_random_background_scale/scenario_summary.csv`
+
+
+## 后续版本说明（不属于本文历史实验结果）
+
+本文主体记录的是此前课程实验版本和对应数据集。后续 0.9.0 开发增加了 SQLite 主数据库雕刻、ext 超级块识别以及合成误删残留/零填充/截断场景；这些新增能力和样本不应被视为本文既有实验的测量结果。SQLite WAL、删除行、文件系统目录记录、真实坏道和物理磁盘访问仍未实现。当前能力及平台计划见 `docs/RECOVERY_ROADMAP.md`。

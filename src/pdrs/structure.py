@@ -1,7 +1,8 @@
-"""Read-only partition-table and filesystem boot-sector inspection for image files.
+"""Read-only partition-table and filesystem metadata inspection for image files.
 
-This module deliberately stops at volume boot-sector metadata. It never reads
-directory entries, allocation records, or file cluster chains.
+This module deliberately stops at partition tables, volume boot sectors, and
+the ext superblock. It never reads directory entries, allocation records, or
+file cluster chains.
 """
 
 from __future__ import annotations
@@ -307,6 +308,90 @@ def _exfat_volume(
     return VolumeInfo(partition_number, offset, "exFAT", "", f"{serial:08X}", details), warnings
 
 
+def _ext_volume(
+    handle: BinaryIO,
+    offset: int,
+    available_bytes: int,
+    partition_number: int | None,
+) -> tuple[VolumeInfo | None, list[str]]:
+    """Recognize an ext-family volume from its fixed-position superblock only."""
+    warnings: list[str] = []
+    superblock_offset = offset + 1024
+    if available_bytes < 2048 or superblock_offset + 1024 > offset + available_bytes:
+        return None, warnings
+    superblock = _read_at(handle, superblock_offset, 1024)
+    if len(superblock) != 1024 or struct.unpack_from("<H", superblock, 56)[0] != 0xEF53:
+        return None, warnings
+
+    inode_count = struct.unpack_from("<I", superblock, 0)[0]
+    blocks_low = struct.unpack_from("<I", superblock, 4)[0]
+    log_block_size = struct.unpack_from("<I", superblock, 24)[0]
+    blocks_per_group = struct.unpack_from("<I", superblock, 32)[0]
+    inodes_per_group = struct.unpack_from("<I", superblock, 40)[0]
+    state_bits = struct.unpack_from("<H", superblock, 58)[0]
+    revision = struct.unpack_from("<I", superblock, 76)[0]
+    inode_size = struct.unpack_from("<H", superblock, 88)[0] if revision else 128
+    feature_incompat = struct.unpack_from("<I", superblock, 96)[0]
+    feature_ro_compat = struct.unpack_from("<I", superblock, 100)[0]
+    blocks_high = struct.unpack_from("<I", superblock, 336)[0] if feature_incompat & 0x80 else 0
+
+    if log_block_size > 6:
+        warnings.append(f"ext superblock at byte offset {superblock_offset} has an unsupported block-size exponent.")
+        return None, warnings
+    block_size = 1024 << log_block_size
+    block_count = (blocks_high << 32) | blocks_low
+    volume_size = block_count * block_size
+    valid = (
+        inode_count > 0
+        and block_count > 0
+        and blocks_per_group > 0
+        and inodes_per_group > 0
+        and inode_size >= 128
+        and inode_size <= block_size
+        and inode_size % 4 == 0
+        and revision <= 1
+    )
+    if not valid:
+        warnings.append(f"ext superblock at byte offset {superblock_offset} has inconsistent geometry fields.")
+        return None, warnings
+
+    fits = volume_size <= available_bytes
+    if not fits:
+        warnings.append(
+            f"ext volume at byte offset {offset} declares {volume_size} bytes, "
+            f"but only {available_bytes} bytes are available in the image/partition."
+        )
+    has_extents = bool(feature_incompat & 0x40)
+    filesystem = "ext4 (extents feature)" if has_extents else "ext filesystem (ext2/3/4-compatible)"
+    if state_bits == 0x01:
+        state = "clean"
+    elif state_bits & 0x02:
+        state = "errors recorded"
+    elif state_bits == 0:
+        state = "not marked clean"
+    else:
+        state = f"unknown (0x{state_bits:04X})"
+    label = superblock[120:136].split(b"\0", 1)[0].decode("utf-8", errors="replace").strip()
+    volume_uuid = str(uuid.UUID(bytes=superblock[104:120]))
+    details: dict[str, int | str | bool | None] = {
+        "superblock_offset_bytes": superblock_offset,
+        "block_size_bytes": block_size,
+        "block_count": block_count,
+        "inode_count": inode_count,
+        "inode_size_bytes": inode_size,
+        "blocks_per_group": blocks_per_group,
+        "inodes_per_group": inodes_per_group,
+        "volume_size_bytes": volume_size,
+        "volume_state": state,
+        "revision": revision,
+        "feature_incompat_hex": f"0x{feature_incompat:08X}",
+        "feature_ro_compat_hex": f"0x{feature_ro_compat:08X}",
+        "extents_feature": has_extents,
+        "fits_in_image_or_partition": fits,
+    }
+    return VolumeInfo(partition_number, offset, filesystem, label, volume_uuid, details), warnings
+
+
 def _volume_at(
     handle: BinaryIO,
     image_size: int,
@@ -317,6 +402,10 @@ def _volume_at(
     warnings: list[str] = []
     if offset < 0 or offset + 512 > image_size or available_bytes < 512:
         return None, warnings
+    ext_volume, ext_warnings = _ext_volume(handle, offset, available_bytes, partition_number)
+    if ext_volume is not None:
+        return ext_volume, ext_warnings
+    warnings.extend(ext_warnings)
     boot = _read_at(handle, offset, 512)
     if len(boot) != 512 or not _valid_mbr_signature(boot):
         return None, warnings
@@ -397,7 +486,7 @@ def _volume_at(
 
 
 def inspect_image(image_path: Path) -> ImageStructure:
-    """Inspect MBR/GPT and FAT32/exFAT boot-sector metadata in a regular image file."""
+    """Inspect MBR/GPT, ext superblocks, and FAT32/exFAT boot metadata in a regular image file."""
     source = image_path.expanduser().resolve(strict=True)
     source_stat = source.stat()
     if not stat.S_ISREG(source_stat.st_mode):
@@ -478,7 +567,7 @@ def inspect_image(image_path: Path) -> ImageStructure:
                 structure.warnings.extend(warnings)
 
         structure.warnings.append(
-            "Inspection is limited to partition tables and volume boot sectors; "
+            "Inspection is limited to partition tables, volume boot sectors, and ext superblocks; "
             "directories, deleted records, file data, and cluster chains are not read."
         )
         return structure

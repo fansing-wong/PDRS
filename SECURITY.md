@@ -4,8 +4,8 @@ PDRS is an educational prototype and is not designed as a hardened service for a
 
 ## Safe use
 
-- Use synthetic images or authorized copies, not a live disk or irreplaceable source.
-- Keep the source image separate from the output directory and retain an untouched original.
+- Use synthetic images or authorized image copies, not a live disk or irreplaceable source. PDRS accepts regular image files and does not provide direct physical-device acquisition.
+- Keep the source image separate from the output directory and retain an untouched original. The bundled damage scenarios alter only generated copies and use zero-fill/truncation as test surrogates.
 - Treat carved files as untrusted. Do not open recovered documents or images in applications you do not trust.
 - Keep Python and the optional Pillow/pypdf dependencies current.
 

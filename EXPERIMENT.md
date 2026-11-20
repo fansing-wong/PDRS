@@ -4,7 +4,7 @@
 
 **基于文件结构约束的数字文件雕刻与恢复效果评估**
 
-The current PDRS prototype carves contiguous BMP, JPEG, PNG, and PDF candidates. This course protocol focuses primarily on PNG boundaries, with JPEG and PDF as comparison formats; BMP has a separate synthetic demo and structural tests.
+The current PDRS prototype carves contiguous BMP, JPEG, PNG, PDF, and SQLite main-database candidates. This course protocol focuses primarily on PNG boundaries, with JPEG and PDF as comparison formats; BMP has a separate synthetic demo and structural tests.
 
 ## Research questions
 
@@ -14,13 +14,13 @@ The current PDRS prototype carves contiguous BMP, JPEG, PNG, and PDF candidates.
 
 ## Scope and hypothesis
 
-Use only synthetic raw images generated for the experiment. The prototype reads the image in read-only mode and writes results to a separate directory. It does not interpret or recover filesystem metadata, contact physical devices, or reconstruct fragmented files.
+Use only synthetic raw images generated for the experiment. The prototype reads the image in read-only mode and writes results to a separate directory. It does not recover filesystem deletion records, contact physical devices, or reconstruct fragmented files. SQLite WAL replay and deleted-row recovery are also outside scope.
 
 Hypothesis: files stored contiguously with intact headers and valid format terminators will be recovered byte-for-byte more often than truncated files or files whose format markers occur in unrelated payload data. Format-aware boundary rules should reduce false positives compared with header-only extraction.
 
 ## Independent variables
 
-- Format: BMP, JPEG, PNG, PDF; the main comparative experiment emphasizes JPEG, PNG, and PDF.
+- Format: BMP, JPEG, PNG, PDF, SQLite; the main comparative experiment emphasizes JPEG, PNG, and PDF.
 - Layout: contiguous, separated by filler bytes, truncated at end marker, truncated before end marker.
 - Background: zero-filled area, random filler, and deliberately embedded decoy signatures.
 - File size: small, medium, and large samples within locally available resources.
@@ -65,3 +65,10 @@ Use SHA-256 equality to establish exact recovery. File-open success is a separat
 5. Results: accuracy, byte recovery, runtime, and memory
 6. Error analysis and threats to validity
 7. Conclusion and next steps (additional format validation and performance measurement; filesystem metadata recovery remains outside this prototype)
+
+
+## Deletion and partial-damage scenarios
+
+`examples/make_recovery_scenario_set_v1.py` creates a SQLite database and three raw images: intact bytes in a location assumed to be unallocated, one zero-filled 512-byte region in a B-tree page, and an image truncated before the declared database end. `examples/run_recovery_scenario_set_v1.py` records manifests and Ground Truth comparisons. The first condition models loss of directory metadata only; it is not a filesystem-deletion recovery test. Zero-fill and truncation are simulations of missing/corrupted bytes, not tests against physical media or actual unreadable sectors.
+
+When reporting platform compatibility, specify the filesystem and encryption state (for example, NTFS, ext4, F2FS, or APFS), not just Windows, Android, Linux, or Apple. See `docs/RECOVERY_ROADMAP.md` for the current capability matrix and planned milestones.

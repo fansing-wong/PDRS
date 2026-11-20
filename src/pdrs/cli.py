@@ -18,7 +18,7 @@ def inspect(
     image: Path = typer.Argument(..., exists=True, readable=True, help="Raw image file to inspect"),
     as_json: bool = typer.Option(False, "--json", help="Print the report as JSON"),
 ) -> None:
-    """Inspect MBR/GPT and volume boot-sector metadata in an image file."""
+    """Inspect MBR/GPT, ext superblocks, and volume boot-sector metadata in an image file."""
     try:
         report = inspect_image(image)
     except (OSError, ValueError) as error:
@@ -31,7 +31,7 @@ def carve(
     image: Path = typer.Argument(..., exists=True, readable=True, help="Raw image file to scan"),
     output: Path = typer.Argument(..., help="Separate directory for recovered candidates"),
 ) -> None:
-    """Carve contiguous BMP, JPEG, PNG, and PDF candidates from a raw image file."""
+    """Carve contiguous BMP, JPEG, PNG, PDF, and SQLite database candidates from a raw image file."""
     try:
         rows = carve_image(image, output)
         manifest = write_manifest(output, rows)

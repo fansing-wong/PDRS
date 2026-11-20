@@ -223,7 +223,7 @@ class PDRSApp:
 
         ttk.Label(
             page,
-            text="支持 BMP、JPEG、PNG、PDF 连续文件雕刻；可查看 MBR/GPT、FAT32 与 exFAT 卷引导参数。不会遍历目录、恢复删除记录或重组碎片文件。",
+            text="支持 BMP、JPEG、PNG、PDF、SQLite 连续文件雕刻；可查看 MBR/GPT、FAT32、exFAT 与 ext 卷元数据。不会遍历目录、恢复删除记录或重组碎片文件。",
             style="SubTitle.TLabel",
             wraplength=980,
         ).grid(row=4, column=0, sticky="w", pady=(12, 0))

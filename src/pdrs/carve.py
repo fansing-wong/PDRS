@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import io
 import mmap
+import sqlite3
 import struct
 import zlib
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from typing import Callable, Iterator
 
 MAX_PNG_COMPRESSED_BYTES = 64 * 1024 * 1024
 MAX_PNG_DECODED_BYTES = 128 * 1024 * 1024
+MAX_SQLITE_CHECK_BYTES = 64 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -151,6 +153,108 @@ def _validate_bmp(image: mmap.mmap, start: int, end: int) -> tuple[bool, str]:
     if start + declared_size != end:
         return False, "BMP candidate is truncated or its boundary differs from bfSize"
     return True, "BMP file/DIB headers, dimensions, and declared pixel-array bounds valid"
+
+
+def _parse_sqlite_header(image: mmap.mmap, start: int) -> tuple[int, int, bool, int] | None:
+    """Read bounded fields from an SQLite database header.
+
+    The returned boolean indicates whether SQLite's in-header page count is
+    trustworthy (nonzero and guarded by a matching change counter).
+    """
+    if start < 0 or start + 100 > len(image):
+        return None
+    header = image[start : start + 100]
+    if header[:16] != b"SQLite format 3\x00":
+        return None
+
+    encoded_page_size = struct.unpack_from(">H", header, 16)[0]
+    page_size = 65536 if encoded_page_size == 1 else encoded_page_size
+    if page_size < 512 or page_size > 65536 or page_size & (page_size - 1):
+        return None
+    if header[18] not in (1, 2) or header[19] not in (1, 2):
+        return None
+
+    reserved_bytes = header[20]
+    if page_size - reserved_bytes < 480 or header[21:24] != bytes((64, 32, 32)):
+        return None
+    if header[72:92] != b"\x00" * 20:
+        return None
+    schema_format = struct.unpack_from(">I", header, 44)[0]
+    text_encoding = struct.unpack_from(">I", header, 56)[0]
+    if schema_format > 4 or text_encoding > 3:
+        return None
+
+    change_counter = struct.unpack_from(">I", header, 24)[0]
+    page_count = struct.unpack_from(">I", header, 28)[0]
+    version_valid_for = struct.unpack_from(">I", header, 92)[0]
+    size_is_valid = page_count > 0 and change_counter == version_valid_for
+    return page_size, page_count, size_is_valid, reserved_bytes
+
+
+def _sqlite_end(image: mmap.mmap, start: int) -> int | None:
+    parsed = _parse_sqlite_header(image, start)
+    if parsed is None:
+        return None
+    page_size, page_count, size_is_valid, _reserved_bytes = parsed
+    if not size_is_valid:
+        return None
+    end = start + page_size * page_count
+    return end if end <= len(image) else None
+
+
+def _validate_sqlite(image: mmap.mmap, start: int, end: int) -> tuple[bool | None, str]:
+    """Validate SQLite header, declared page extent, and the page-one B-tree header."""
+    parsed = _parse_sqlite_header(image, start)
+    if parsed is None:
+        return False, "SQLite database header is invalid or truncated"
+    page_size, page_count, size_is_valid, reserved_bytes = parsed
+    if not size_is_valid:
+        return False, "SQLite header page count is not trustworthy"
+    declared_size = page_size * page_count
+    if end - start != declared_size:
+        return False, "SQLite candidate boundary differs from its declared page count"
+
+    usable_size = page_size - reserved_bytes
+    if start + page_size > end:
+        return False, "SQLite first page exceeds the candidate boundary"
+    page_type = image[start + 100]
+    if page_type == 0x05:
+        btree_header_size = 12
+    elif page_type == 0x0D:
+        btree_header_size = 8
+    else:
+        return False, "SQLite page one is not a table B-tree page"
+
+    cell_count = struct.unpack_from(">H", image, start + 103)[0]
+    cell_content_start = struct.unpack_from(">H", image, start + 105)[0]
+    if cell_content_start == 0:
+        cell_content_start = 65536
+    pointer_array_end = 100 + btree_header_size + cell_count * 2
+    if pointer_array_end > usable_size:
+        return False, "SQLite page-one cell pointer array exceeds usable page space"
+    if not pointer_array_end <= cell_content_start <= usable_size:
+        return False, "SQLite page-one cell content offset is invalid"
+    if declared_size > MAX_SQLITE_CHECK_BYTES:
+        return None, (
+            "SQLite header and page-one B-tree bounds valid; full quick_check skipped "
+            f"because database exceeds the {MAX_SQLITE_CHECK_BYTES // (1024 * 1024)} MiB limit"
+        )
+
+    connection = sqlite3.connect(":memory:")
+    try:
+        deserialize = getattr(connection, "deserialize", None)
+        if deserialize is None:
+            return None, "SQLite full quick_check is unavailable in this Python SQLite build; structural checks passed"
+        deserialize(bytes(image[start:end]))
+        check = connection.execute("PRAGMA quick_check").fetchone()
+        if check is None or check[0] != "ok":
+            detail = "no result" if check is None else str(check[0])
+            return False, f"SQLite quick_check failed: {detail}"
+    except sqlite3.Error as error:
+        return False, f"SQLite quick_check rejected candidate: {error}"
+    finally:
+        connection.close()
+    return True, "SQLite header, page-one B-tree bounds, and full quick_check valid"
 
 
 def _validate_png(image: mmap.mmap, start: int, end: int) -> tuple[bool, str]:
@@ -311,6 +415,7 @@ FORMATS = (
     FormatSpec("png", ".png", b"\x89PNG\r\n\x1a\n", _png_end),
     FormatSpec("pdf", ".pdf", b"%PDF-", _pdf_end),
     FormatSpec("bmp", ".bmp", b"BM", _bmp_end),
+    FormatSpec("sqlite", ".sqlite", b"SQLite format 3\x00", _sqlite_end),
 )
 
 
@@ -323,8 +428,13 @@ def find_candidates(image: mmap.mmap) -> Iterator[Candidate]:
             offset = image.find(spec.header, offset)
             if offset < 0:
                 break
-            if spec.name != "bmp" or _parse_bmp_header(image, offset) is not None:
-                found.append((offset, spec))
+            if spec.name == "bmp" and _parse_bmp_header(image, offset) is None:
+                offset += len(spec.header)
+                continue
+            if spec.name == "sqlite" and _parse_sqlite_header(image, offset) is None:
+                offset += len(spec.header)
+                continue
+            found.append((offset, spec))
             offset += len(spec.header)
 
     found.sort(key=lambda item: item[0])
@@ -337,6 +447,8 @@ def find_candidates(image: mmap.mmap) -> Iterator[Candidate]:
             format_valid, validation_note = _validate_png(image, start, candidate_end)
         elif spec.name == "bmp":
             format_valid, validation_note = _validate_bmp(image, start, candidate_end)
+        elif spec.name == "sqlite":
+            format_valid, validation_note = _validate_sqlite(image, start, candidate_end)
         else:
             format_valid, validation_note = _validate_with_optional_parser(
                 spec.name, image, start, candidate_end
