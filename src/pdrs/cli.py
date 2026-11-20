@@ -36,7 +36,7 @@ def recover_fat32_deleted(
         None, "--ground-truth", exists=True, readable=True, help="Optional Ground Truth CSV for hash/offset comparison"
     ),
 ) -> None:
-    """Experimental: recover deleted FAT32 short entries in active directories as contiguous data."""
+    """Experimental: extract deleted FAT32 entries and reconstruct adjacent LFN names as contiguous data."""
     try:
         result = recover_deleted_fat32(image, output)
         manifest = write_manifest(output, result.rows)

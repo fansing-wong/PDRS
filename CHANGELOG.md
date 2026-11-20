@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.0 — FAT32 deleted long-name reconstruction
+
+- Reconstructs a display filename from adjacent deleted FAT32 LFN slots in the root or active subdirectories.
+- Stores the original LFN in `manifest.csv` and saves a sanitized, unique output filename with an entry-offset suffix.
+- Falls back to a generic candidate name when LFN slots are malformed; data extraction can still proceed.
+- Documents that the deleted short-name first byte prevents full LFN checksum verification.
+- The FAT32 demo reports LFN exact-name matches separately from byte hash and offset matches.
+
 ## 0.11.0 — FAT32 active-subdirectory scan
 
 - Extended deleted short-entry scans from the root directory into still-active subdirectories.

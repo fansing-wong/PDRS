@@ -21,6 +21,11 @@ MAX_RECOVERED_FILE_BYTES = 256 * 1024 * 1024
 MAX_TOTAL_RECOVERED_BYTES = 1024 * 1024 * 1024
 MAX_CANDIDATES = 10000
 MAX_WARNINGS = 100
+MAX_LFN_ENTRIES = 20
+BIDI_CONTROL_CODEPOINTS = {
+    0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+    0x2066, 0x2067, 0x2068, 0x2069,
+}
 FAT32_EOC_MIN = 0x0FFFFFF8
 FAT32_BAD_CLUSTER = 0x0FFFFFF7
 
@@ -90,6 +95,57 @@ def _is_dot_directory(entry: bytes) -> bool:
     return entry[:11].rstrip(b" ") in (b".", b"..")
 
 
+def _unsafe_filename_character(char: str) -> bool:
+    codepoint = ord(char)
+    return (
+        codepoint < 0x20
+        or 0x7F <= codepoint <= 0x9F
+        or codepoint in BIDI_CONTROL_CODEPOINTS
+        or char in '<>:"/\\|?*'
+    )
+
+
+def _decode_deleted_lfn(slots: list[bytes]) -> tuple[str | None, str]:
+    if not slots:
+        return None, "not_present"
+    if len(slots) > MAX_LFN_ENTRIES:
+        return None, "invalid"
+    checksum = slots[0][13]
+    if any(
+        slot[0] != 0xE5
+        or slot[11] != 0x0F
+        or slot[12] != 0
+        or slot[13] != checksum
+        or struct.unpack_from("<H", slot, 26)[0] != 0
+        for slot in slots
+    ):
+        return None, "invalid"
+
+    units: list[int] = []
+    for slot in reversed(slots):
+        for offset, length in ((1, 10), (14, 12), (28, 4)):
+            units.extend(struct.unpack_from(f"<{length // 2}H", slot, offset))
+    terminators = [index for index, unit in enumerate(units) if unit in (0, 0xFFFF)]
+    if terminators:
+        end = terminators[0]
+        if any(unit not in (0, 0xFFFF) for unit in units[end:]):
+            return None, "invalid"
+        units = units[:end]
+    if not units or len(units) > 255:
+        return None, "invalid"
+    try:
+        name = struct.pack(f"<{len(units)}H", *units).decode("utf-16le", errors="strict")
+    except (UnicodeDecodeError, struct.error):
+        return None, "invalid"
+    if (
+        not name
+        or name.endswith((" ", "."))
+        or any(_unsafe_filename_character(char) for char in name)
+    ):
+        return None, "invalid"
+    return name, "reconstructed_unverified"
+
+
 def _add_warning(warnings: list[str], message: str) -> None:
     if len(warnings) < MAX_WARNINGS:
         warnings.append(message)
@@ -102,6 +158,40 @@ def _extension(entry: bytes) -> str:
     if not raw or any(not (char.isalnum() or char in "_$~-") for char in raw):
         return ".bin"
     return f".{raw}"
+
+
+def _candidate_filename(
+    long_name: str | None,
+    extension: str,
+    partition_number: int,
+    entry_offset: int,
+) -> str:
+    unique_suffix = f"p{partition_number:02d}_entry_{entry_offset:012x}"
+    if not long_name:
+        return f"deleted_{unique_suffix}{extension}"
+    if "." in long_name:
+        original_stem, original_extension = long_name.rsplit(".", 1)
+    else:
+        original_stem, original_extension = long_name, ""
+
+    def _safe_component(value: str) -> str:
+        return "".join(
+            "_" if _unsafe_filename_character(char) else char
+            for char in value
+        ).strip(" .")
+
+    safe_stem = _safe_component(original_stem)
+    if not safe_stem:
+        return f"deleted_{unique_suffix}{extension}"
+    safe_stem = safe_stem[:80]
+    safe_extension = _safe_component(original_extension)[:20]
+    reserved_names = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
+    reserved_names.update(f"COM{index}" for index in range(1, 10))
+    reserved_names.update(f"LPT{index}" for index in range(1, 10))
+    if safe_stem.upper() in reserved_names:
+        safe_stem = f"_{safe_stem}"
+    suffix = f".{safe_extension}" if safe_extension else ""
+    return f"{safe_stem}__{unique_suffix}{suffix}"
 
 
 def _volume_geometry(
@@ -182,7 +272,7 @@ def _recover_volume(
     count_limit_reported = False
     candidate_limit_reported = False
     directory_scan_complete = True
-    deleted_entries: list[tuple[int, int, int, bytes]] = []
+    deleted_entries: list[tuple[int, int, int, bytes, str | None, str]] = []
 
     while pending_directories:
         directory_start, depth = pending_directories.popleft()
@@ -224,6 +314,7 @@ def _recover_volume(
         total_directory_bytes += directory_bytes
 
         stop_directory = False
+        pending_lfn_slots: list[bytes] = []
         for directory_cluster in directory_clusters:
             directory_offset = geometry["data_start"] + (directory_cluster - 2) * cluster_size
             directory_end = directory_offset + cluster_size
@@ -241,20 +332,41 @@ def _recover_volume(
                 entry = image[entry_offset : entry_offset + 32]
                 first_byte = entry[0]
                 if first_byte == 0x00:
+                    pending_lfn_slots.clear()
                     stop_directory = True
                     break
                 attributes = entry[11]
+                if attributes == 0x0F:
+                    if first_byte == 0xE5:
+                        if len(pending_lfn_slots) <= MAX_LFN_ENTRIES:
+                            pending_lfn_slots.append(entry)
+                    else:
+                        pending_lfn_slots.clear()
+                    continue
                 if first_byte == 0xE5:
                     if attributes == 0x0F or attributes & 0x18:
+                        pending_lfn_slots.clear()
                         continue
                     deleted_seen += 1
+                    long_name, long_name_status = _decode_deleted_lfn(pending_lfn_slots)
+                    if pending_lfn_slots and long_name_status == "invalid":
+                        _add_warning(warnings, f"Deleted LFN slots before entry {entry_offset} were incomplete or invalid.")
                     if len(deleted_entries) < MAX_CANDIDATES:
-                        deleted_entries.append((entry_offset, directory_cluster, depth, entry))
+                        deleted_entries.append((
+                            entry_offset,
+                            directory_cluster,
+                            depth,
+                            entry,
+                            long_name,
+                            long_name_status,
+                        ))
                     elif not candidate_limit_reported:
                         _add_warning(warnings, f"Only the first {MAX_CANDIDATES} deleted entries will be considered.")
                         candidate_limit_reported = True
+                    pending_lfn_slots.clear()
                     continue
 
+                pending_lfn_slots.clear()
                 if attributes == 0x0F or not attributes & 0x10 or attributes & 0x08 or _is_dot_directory(entry):
                     continue
                 child_cluster = _entry_cluster(entry)
@@ -292,7 +404,7 @@ def _recover_volume(
         return deleted_seen, warnings, scanned_directory_count, total_directory_bytes
 
     sorted_directory_clusters = sorted(scanned_directory_clusters)
-    for entry_offset, directory_cluster, depth, entry in deleted_entries:
+    for entry_offset, directory_cluster, depth, entry, long_name, long_name_status in deleted_entries:
         if len(rows) >= MAX_CANDIDATES:
             _add_warning(warnings, f"Stopped after the {MAX_CANDIDATES}-candidate safety limit.")
             break
@@ -331,7 +443,7 @@ def _recover_volume(
                 )
                 continue
 
-        filename = f"deleted_p{partition_number:02d}_entry_{entry_offset:012x}{extension}"
+        filename = _candidate_filename(long_name, extension, partition_number, entry_offset)
         target = output / filename
         view = memoryview(image)[data_offset : data_offset + file_size]
         digest = hashlib.sha256(view).hexdigest()
@@ -355,14 +467,21 @@ def _recover_volume(
             "size_bytes": file_size,
             "complete_boundary": True,
             "format_valid": None,
-            "validation_note": "Experimental FAT32 deleted short entry; file data was assumed contiguous and not format-validated",
+            "validation_note": (
+                "Experimental FAT32 deleted short entry; file data was assumed contiguous and not format-validated; "
+                "reconstructed LFN checksum cannot be verified because the short-name first byte was erased"
+                if long_name
+                else "Experimental FAT32 deleted short entry; file data was assumed contiguous and not format-validated"
+            ),
             "sha256": digest,
             "partition_number": partition_number,
             "directory_entry_offset": entry_offset,
             "directory_cluster": directory_cluster,
             "directory_depth": depth,
+            "original_long_filename": long_name or "",
+            "long_filename_status": long_name_status,
             "first_cluster": first_cluster,
-            "recovery_assumption": "active directory chain; contiguous file data; original first filename character unavailable",
+            "recovery_assumption": "active directory chain; contiguous file data; deleted short-alias first byte unavailable",
         })
     return deleted_seen, warnings, scanned_directory_count, total_directory_bytes
 
@@ -372,7 +491,7 @@ def recover_deleted_fat32(image_path: Path, output_dir: Path) -> Fat32RecoveryRe
 
     The source must be a regular raw image file. The image is memory-mapped read-only.
     This experimental version assumes each file's data occupies contiguous clusters;
-    deleted directories and long filenames are not recovered.
+    deleted directories are not traversed; LFN reconstruction is best-effort.
     """
     source = image_path.expanduser().resolve(strict=True)
     source_stat = source.stat()

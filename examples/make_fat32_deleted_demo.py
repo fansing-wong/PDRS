@@ -25,6 +25,41 @@ def cluster_offset(cluster: int) -> int:
     return SECTOR_SIZE + (DATA_START_SECTOR + cluster - 2) * SECTOR_SIZE
 
 
+def _lfn_checksum(short_name: bytes) -> int:
+    checksum = 0
+    for byte in short_name:
+        checksum = (((checksum & 1) << 7) | (checksum >> 1)) + byte
+        checksum &= 0xFF
+    return checksum
+
+
+def _deleted_lfn_entries(long_name: str, short_name: bytes) -> list[bytes]:
+    encoded = long_name.encode("utf-16le")
+    units = list(struct.unpack(f"<{len(encoded) // 2}H", encoded))
+    chunks = [units[index : index + 13] for index in range(0, len(units), 13)]
+    checksum = _lfn_checksum(short_name)
+    entries: list[bytes] = []
+    for sequence in range(len(chunks), 0, -1):
+        part = list(chunks[sequence - 1])
+        if sequence == len(chunks) and len(part) < 13:
+            part.append(0)
+            part.extend([0xFFFF] * (13 - len(part)))
+        part.extend([0xFFFF] * (13 - len(part)))
+        raw_units = struct.pack("<13H", *part)
+        entry = bytearray(32)
+        entry[0] = sequence | (0x40 if sequence == len(chunks) else 0)
+        entry[11] = 0x0F
+        entry[12] = 0
+        entry[13] = checksum
+        struct.pack_into("<H", entry, 26, 0)
+        entry[1:11] = raw_units[:10]
+        entry[14:26] = raw_units[10:22]
+        entry[28:32] = raw_units[22:26]
+        entry[0] = 0xE5
+        entries.append(bytes(entry))
+    return entries
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_ROOT)
@@ -41,6 +76,8 @@ def main() -> None:
         b"Synthetic FAT32 deleted-file sample for PDRS.\r\n"
         b"This entry lives in the root directory and its data is contiguous.\r\n"
     ) * 6
+    root_short_name = b"ROOTSAMPTXT"
+    nested_short_name = b"NESTSAMPTXT"
     nested_payload = (
         b"This deleted entry is in an active FAT32 subdirectory.\r\n"
         b"The original directory remains allocated; file data is contiguous.\r\n"
@@ -93,13 +130,15 @@ def main() -> None:
 
         deleted_entry = bytearray(32)
         deleted_entry[0] = 0xE5
-        deleted_entry[1:8] = b"ELETED "
+        deleted_entry[1:8] = b"OOTSAMP"
         deleted_entry[8:11] = b"TXT"
         deleted_entry[11] = 0x20
         struct.pack_into("<H", deleted_entry, 26, FILE_CLUSTER)
         struct.pack_into("<I", deleted_entry, 28, len(root_payload))
         root_directory_offset = SECTOR_SIZE + DATA_START_SECTOR * SECTOR_SIZE
         handle.seek(root_directory_offset)
+        for lfn_entry in _deleted_lfn_entries(root_source.name, root_short_name):
+            handle.write(lfn_entry)
         handle.write(deleted_entry)
 
         # Include an intact directory entry to show that only deleted entries are extracted.
@@ -126,12 +165,14 @@ def main() -> None:
 
         nested_deleted_entry = bytearray(32)
         nested_deleted_entry[0] = 0xE5
-        nested_deleted_entry[1:8] = b"ESTNEST"
+        nested_deleted_entry[1:8] = b"ESTSAMP"
         nested_deleted_entry[8:11] = b"TXT"
         nested_deleted_entry[11] = 0x20
         struct.pack_into("<H", nested_deleted_entry, 26, NESTED_FILE_CLUSTER)
         struct.pack_into("<I", nested_deleted_entry, 28, len(nested_payload))
         handle.seek(cluster_offset(SUBDIRECTORY_CLUSTER))
+        for lfn_entry in _deleted_lfn_entries(nested_source.name, nested_short_name):
+            handle.write(lfn_entry)
         handle.write(nested_deleted_entry)
 
         dot_entry = bytearray(32)

@@ -167,6 +167,57 @@ def add_subdirectory_controls(image_path: Path) -> tuple[bytes, int]:
     return nested_payload, cluster_offset(NESTED_FILE_CLUSTER)
 
 
+def _lfn_checksum(short_name: bytes) -> int:
+    checksum = 0
+    for byte in short_name:
+        checksum = (((checksum & 1) << 7) | (checksum >> 1)) + byte
+        checksum &= 0xFF
+    return checksum
+
+
+def add_deleted_lfn_to_directory(
+    image_path: Path,
+    directory_cluster: int,
+    long_name: str,
+    short_name: bytes,
+) -> int:
+    encoded = long_name.encode("utf-16le")
+    units = list(struct.unpack(f"<{len(encoded) // 2}H", encoded))
+    chunks = [units[index : index + 13] for index in range(0, len(units), 13)]
+    checksum = _lfn_checksum(short_name)
+    slots: list[bytes] = []
+    for sequence in range(len(chunks), 0, -1):
+        part = list(chunks[sequence - 1])
+        if sequence == len(chunks) and len(part) < 13:
+            part.append(0)
+            part.extend([0xFFFF] * (13 - len(part)))
+        entry = bytearray(32)
+        entry[0] = sequence | (0x40 if sequence == len(chunks) else 0)
+        entry[11] = 0x0F
+        entry[12] = 0
+        entry[13] = checksum
+        struct.pack_into("<H", entry, 26, 0)
+        packed_units = part + [0xFFFF] * (13 - len(part))
+        flat_units = bytearray(struct.pack("<13H", *packed_units))
+        entry[1:11] = flat_units[:10]
+        entry[14:26] = flat_units[10:22]
+        entry[28:32] = flat_units[22:26]
+        entry[0] = 0xE5
+        slots.append(bytes(entry))
+
+    directory_offset = SECTOR_SIZE + (DATA_START_SECTOR + directory_cluster - 2) * SECTOR_SIZE
+    shift = len(slots) * 32
+    with image_path.open("r+b") as handle:
+        handle.seek(directory_offset)
+        original_cluster = bytearray(handle.read(SECTOR_SIZE))
+        shifted = bytearray(SECTOR_SIZE)
+        shifted[:shift] = b"".join(slots)
+        shifted[shift:] = original_cluster[:-shift]
+        handle.seek(directory_offset)
+        handle.write(shifted)
+    return directory_offset + shift
+
+
 class Fat32RecoveryTests(unittest.TestCase):
     def test_recovers_deleted_root_short_entry_read_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -216,6 +267,100 @@ class Fat32RecoveryTests(unittest.TestCase):
             self.assertFalse(any(row["sha256"] == hashlib.sha256(
                 b"Must stay hidden inside a deleted directory.\r\n"
             ).hexdigest() for row in result.rows))
+
+    def test_reconstructs_deleted_long_filename_from_adjacent_slots(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_lfn_deleted.img"
+            payload, _ = make_deleted_fat32_image(image)
+            long_name = "恢复报告-2026-final.txt"
+            entry_offset = add_deleted_lfn_to_directory(
+                image, ROOT_CLUSTER, long_name, b"TESTFILETXT"
+            )
+            result = recover_deleted_fat32(image, root / "recovered")
+
+            self.assertEqual(len(result.rows), 1)
+            row = result.rows[0]
+            self.assertEqual(row["directory_entry_offset"], entry_offset)
+            self.assertEqual(row["original_long_filename"], long_name)
+            self.assertEqual(row["long_filename_status"], "reconstructed_unverified")
+            self.assertIn("恢复报告-2026-final__p01_entry_", row["filename"])
+            self.assertIn("cannot be verified", row["validation_note"])
+            self.assertEqual((root / "recovered" / str(row["filename"])).read_bytes(), payload)
+
+    def test_invalid_deleted_lfn_does_not_block_short_entry_recovery(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_bad_lfn.img"
+            make_deleted_fat32_image(image)
+            add_deleted_lfn_to_directory(
+                image, ROOT_CLUSTER, "Long-name-sample.txt", b"TESTFILETXT"
+            )
+            root_offset = SECTOR_SIZE + DATA_START_SECTOR * SECTOR_SIZE
+            with image.open("r+b") as handle:
+                handle.seek(root_offset + 32 + 13)
+                handle.write(b"\x00")
+
+            result = recover_deleted_fat32(image, root / "recovered")
+
+            self.assertEqual(len(result.rows), 1)
+            self.assertEqual(result.rows[0]["original_long_filename"], "")
+            self.assertEqual(result.rows[0]["long_filename_status"], "invalid")
+            self.assertTrue(any("LFN slots" in warning for warning in result.warnings))
+
+    def test_rejects_path_separators_in_reconstructed_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_path_lfn.img"
+            make_deleted_fat32_image(image)
+            add_deleted_lfn_to_directory(
+                image, ROOT_CLUSTER, "..\\escape.txt", b"TESTFILETXT"
+            )
+            output = root / "recovered"
+
+            result = recover_deleted_fat32(image, output)
+
+            self.assertEqual(len(result.rows), 1)
+            self.assertEqual(result.rows[0]["original_long_filename"], "")
+            self.assertEqual(result.rows[0]["long_filename_status"], "invalid")
+            self.assertEqual([path.name for path in output.iterdir()], [result.rows[0]["filename"]])
+            self.assertFalse((root / "escape.txt").exists())
+
+    def test_rejects_bidi_controls_in_reconstructed_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_bidi_lfn.img"
+            make_deleted_fat32_image(image)
+            add_deleted_lfn_to_directory(
+                image, ROOT_CLUSTER, "safe\u202eexe.txt", b"TESTFILETXT"
+            )
+
+            result = recover_deleted_fat32(image, root / "recovered")
+
+            self.assertEqual(len(result.rows), 1)
+            self.assertEqual(result.rows[0]["original_long_filename"], "")
+            self.assertEqual(result.rows[0]["long_filename_status"], "invalid")
+            self.assertTrue(result.rows[0]["filename"].startswith("deleted_"))
+
+    def test_reconstructs_deleted_long_filename_in_subdirectory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_nested_lfn.img"
+            make_deleted_fat32_image(image)
+            nested_payload, _ = add_subdirectory_controls(image)
+            long_name = "nested report-恢复.txt"
+            entry_offset = add_deleted_lfn_to_directory(
+                image, SUBDIRECTORY_CLUSTER, long_name, b"TESTNESTTXT"
+            )
+
+            result = recover_deleted_fat32(image, root / "recovered")
+
+            nested_row = next(row for row in result.rows if row["directory_entry_offset"] == entry_offset)
+            self.assertEqual(nested_row["original_long_filename"], long_name)
+            self.assertEqual(nested_row["long_filename_status"], "reconstructed_unverified")
+            self.assertEqual(
+                (root / "recovered" / str(nested_row["filename"])).read_bytes(), nested_payload
+            )
 
     def test_respects_subdirectory_depth_limit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

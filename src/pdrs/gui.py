@@ -228,7 +228,7 @@ class PDRSApp:
 
         ttk.Label(
             page,
-            text="支持 BMP、JPEG、PNG、PDF、SQLite 连续雕刻；FAT32误删恢复实验性扫描根目录和活动子目录的8.3项。不会访问物理磁盘或重组碎片文件。",
+            text="支持 BMP、JPEG、PNG、PDF、SQLite 连续雕刻；FAT32误删实验性扫描目录并尝试重建相邻长文件名。不会访问物理磁盘或重组碎片。",
             style="SubTitle.TLabel",
             wraplength=980,
         ).grid(row=4, column=0, sticky="w", pady=(12, 0))
@@ -412,7 +412,8 @@ class PDRSApp:
         confirmed = messagebox.askyesno(
             "实验性 FAT32 恢复",
             "将只读检查 raw 镜像中 FAT32 根目录及仍可访问的子目录。\n\n"
-            "仅尝试短文件名项和连续簇数据；不恢复已删除目录，不重组碎片，也不保证文件内容有效。\n"
+            "仅尝试短文件名项及相邻 LFN 名称；短名首字符丢失，LFN 校验和无法完整核验。\n"
+            "数据按连续簇读取；不进入已删除目录、不重组碎片，也不保证文件内容有效。\n"
             "请只对自己制作或获准检查的镜像副本操作。继续吗？",
             parent=self.root,
         )
@@ -427,7 +428,7 @@ class PDRSApp:
         self.result_info.set("FAT32 恢复进行中…")
         self.summary_info.set("")
         self.evaluation_info.set("")
-        self.details.set("实验性 FAT32 恢复扫描根目录和活动子目录中的删除短文件名项，文件内容假定连续存放。")
+        self.details.set("实验性 FAT32 恢复扫描删除短文件名项，并尝试重建相邻 LFN；文件内容假定连续存放。")
         self._clear_results()
         self._set_busy(True)
         self.status.set("正在只读检查 FAT32 目录…")
@@ -677,7 +678,7 @@ class PDRSApp:
             )
             if evaluation is None:
                 self.evaluation_info.set(
-                    "扫描根目录和活动子目录的 8.3 删除项；提取数据按连续簇假设，格式未验证。"
+                    "扫描 8.3 删除项并尝试重建 LFN；提取数据按连续簇假设，短名校验和不完整，格式未验证。"
                 )
                 self.manifest_info.set(f"Manifest：{manifest}")
             else:
@@ -731,6 +732,10 @@ class PDRSApp:
                 f"目录深度：{row['directory_depth']}    目录簇：{row['directory_cluster']}    "
                 f"目录项偏移：{row['directory_entry_offset']}"
             )
+        if row.get("original_long_filename"):
+            detail_lines.append(f"恢复的长文件名（短名校验和无法核实）：{row['original_long_filename']}")
+        elif row.get("long_filename_status") == "invalid":
+            detail_lines.append("删除的长文件名槽不完整或格式无效；使用安全候选名保存文件。")
         detail_lines.append(f"校验说明：{row['validation_note']}")
         self.details.set("\n".join(detail_lines))
         if self._has_ground_truth_evaluation:
