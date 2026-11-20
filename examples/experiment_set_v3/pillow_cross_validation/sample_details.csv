@@ -1,0 +1,21 @@
+scenario,sample_id,target_present,candidate_emitted,pillow_decoded_as_png,dimensions,decoded_pixels_match_source,decode_error
+valid_control,png_01,True,True,True,8x8,True,
+crc_consistent_invalid_idat,png_01,False,True,False,,False,OSError: broken data stream when reading image file
+valid_control,png_02,True,True,True,16x16,True,
+crc_consistent_invalid_idat,png_02,False,True,False,,False,OSError: broken data stream when reading image file
+valid_control,png_03,True,True,True,24x24,True,
+crc_consistent_invalid_idat,png_03,False,True,False,,False,OSError: broken data stream when reading image file
+valid_control,png_04,True,True,True,32x32,True,
+crc_consistent_invalid_idat,png_04,False,True,False,,False,OSError: broken data stream when reading image file
+valid_control,png_05,True,True,True,48x48,True,
+crc_consistent_invalid_idat,png_05,False,True,False,,False,OSError: broken data stream when reading image file
+valid_control,png_06,True,True,True,64x64,True,
+crc_consistent_invalid_idat,png_06,False,True,False,,False,OSError: broken data stream when reading image file
+valid_control,png_07,True,True,True,80x80,True,
+crc_consistent_invalid_idat,png_07,False,True,False,,False,OSError: broken data stream when reading image file
+valid_control,png_08,True,True,True,96x96,True,
+crc_consistent_invalid_idat,png_08,False,True,False,,False,OSError: broken data stream when reading image file
+valid_control,png_09,True,True,True,112x112,True,
+crc_consistent_invalid_idat,png_09,False,True,False,,False,OSError: broken data stream when reading image file
+valid_control,png_10,True,True,True,128x128,True,
+crc_consistent_invalid_idat,png_10,False,True,False,,False,OSError: broken data stream when reading image file

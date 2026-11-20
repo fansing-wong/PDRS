@@ -1,0 +1,11 @@
+image_filename,v17_seconds,v20_full_index_mean_seconds,v21_lazy_index_seconds,v22_fast_lazy_index_seconds,speedup_vs_v17,visited_nodes,unique_offsets_parsed,indexed_crc_chunks,idat_candidates,zlib_rejected_branches,incomplete_zlib_paths,pillow_checks,pillow_rejected_paths,exact_source_hash,pixels_equal_source
+five_gaps_with_decoys_sample_01.img,17.474202,0.988780,1.384442,1.411642,12.38,29397,10288,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_02.img,16.662761,0.988780,1.246315,1.128826,14.76,29397,10288,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_03.img,17.191310,0.988780,1.191618,1.078672,15.94,29397,10288,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_04.img,14.464343,0.988780,1.011571,1.226496,11.79,29397,10288,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_05.img,14.443376,0.988780,1.003752,1.517991,9.51,29397,10288,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_06.img,14.137112,0.988780,0.815564,1.265071,11.17,29397,10288,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_07.img,16.976892,0.988780,0.769009,1.334203,12.72,29397,10288,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_08.img,14.864874,0.988780,0.598130,1.024388,14.51,29397,10288,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_09.img,13.980019,0.988780,1.222112,1.141649,12.25,29397,10288,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_10.img,13.077789,0.988780,1.459680,1.556574,8.40,29397,10288,22,30115,719,14542,1,0,True,True

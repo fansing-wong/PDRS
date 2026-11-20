@@ -1,0 +1,2 @@
+samples,full_backtracking_mean_seconds,zlib_pruned_mean_seconds,mean_speedup,zlib_rejected_branches_total,pillow_checks_total,pillow_rejected_paths_total,all_exact_hashes,all_pillow_decoded,all_pixels_equal,mean_visited_nodes
+10,15.327268,13.393092,1.14,7190,145430,145420,10,10,10,29397.0

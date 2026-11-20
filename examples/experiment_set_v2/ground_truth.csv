@@ -1,0 +1,41 @@
+scenario,sample_id,image_filename,target_present,expected_offset,original_size_bytes,included_source_bytes,original_sha256,image_size_bytes,scenario_note
+baseline,png_01,baseline_png_01.img,True,62,332,332,5364d5c5a9fab5db31db598859373532967af130286330cec9e8f6f892b61bad,425,intact contiguous PNG
+truncated,png_01,truncated_png_01.img,True,63,332,320,5364d5c5a9fab5db31db598859373532967af130286330cec9e8f6f892b61bad,414,PNG IEND chunk removed; 31 filler bytes follow
+decoy_signature,png_01,decoy_signature_png_01.img,False,69,332,0,5364d5c5a9fab5db31db598859373532967af130286330cec9e8f6f892b61bad,140,fake PNG signature and IEND marker; no genuine file
+fragmented,png_01,fragmented_png_01.img,True,64,332,332,5364d5c5a9fab5db31db598859373532967af130286330cec9e8f6f892b61bad,939,512 filler bytes inserted inside PNG
+baseline,png_02,baseline_png_02.img,True,62,1108,1108,0efe8e3492fdbbf7d0648a483fb4561d830f38beeadd73cccb3540c10e0e08b4,1201,intact contiguous PNG
+truncated,png_02,truncated_png_02.img,True,63,1108,1096,0efe8e3492fdbbf7d0648a483fb4561d830f38beeadd73cccb3540c10e0e08b4,1190,PNG IEND chunk removed; 31 filler bytes follow
+decoy_signature,png_02,decoy_signature_png_02.img,False,69,1108,0,0efe8e3492fdbbf7d0648a483fb4561d830f38beeadd73cccb3540c10e0e08b4,140,fake PNG signature and IEND marker; no genuine file
+fragmented,png_02,fragmented_png_02.img,True,64,1108,1108,0efe8e3492fdbbf7d0648a483fb4561d830f38beeadd73cccb3540c10e0e08b4,1715,512 filler bytes inserted inside PNG
+baseline,png_03,baseline_png_03.img,True,62,2396,2396,57f5636d0a980c7c935fe0d0c907a19534723cceece185da27853552ded629a2,2489,intact contiguous PNG
+truncated,png_03,truncated_png_03.img,True,63,2396,2384,57f5636d0a980c7c935fe0d0c907a19534723cceece185da27853552ded629a2,2478,PNG IEND chunk removed; 31 filler bytes follow
+decoy_signature,png_03,decoy_signature_png_03.img,False,69,2396,0,57f5636d0a980c7c935fe0d0c907a19534723cceece185da27853552ded629a2,140,fake PNG signature and IEND marker; no genuine file
+fragmented,png_03,fragmented_png_03.img,True,64,2396,2396,57f5636d0a980c7c935fe0d0c907a19534723cceece185da27853552ded629a2,3003,512 filler bytes inserted inside PNG
+baseline,png_04,baseline_png_04.img,True,62,4196,4196,f74fd15094bed51a65cad61bbd2c283b939ab27111135318e246bcec40399d4f,4289,intact contiguous PNG
+truncated,png_04,truncated_png_04.img,True,63,4196,4184,f74fd15094bed51a65cad61bbd2c283b939ab27111135318e246bcec40399d4f,4278,PNG IEND chunk removed; 31 filler bytes follow
+decoy_signature,png_04,decoy_signature_png_04.img,False,69,4196,0,f74fd15094bed51a65cad61bbd2c283b939ab27111135318e246bcec40399d4f,140,fake PNG signature and IEND marker; no genuine file
+fragmented,png_04,fragmented_png_04.img,True,64,4196,4196,f74fd15094bed51a65cad61bbd2c283b939ab27111135318e246bcec40399d4f,4803,512 filler bytes inserted inside PNG
+baseline,png_05,baseline_png_05.img,True,62,9332,9332,5ed261874537648f73fb8a5901e9a1a9368a44593215db2887c6a35f50b7d658,9425,intact contiguous PNG
+truncated,png_05,truncated_png_05.img,True,63,9332,9320,5ed261874537648f73fb8a5901e9a1a9368a44593215db2887c6a35f50b7d658,9414,PNG IEND chunk removed; 31 filler bytes follow
+decoy_signature,png_05,decoy_signature_png_05.img,False,69,9332,0,5ed261874537648f73fb8a5901e9a1a9368a44593215db2887c6a35f50b7d658,140,fake PNG signature and IEND marker; no genuine file
+fragmented,png_05,fragmented_png_05.img,True,64,9332,9332,5ed261874537648f73fb8a5901e9a1a9368a44593215db2887c6a35f50b7d658,9939,512 filler bytes inserted inside PNG
+baseline,png_06,baseline_png_06.img,True,62,16521,16521,a0b9c7bbcd0d3bd2ab6d9301e9f0d93f0a5144ffe72b48df72e4c90e7476f193,16614,intact contiguous PNG
+truncated,png_06,truncated_png_06.img,True,63,16521,16509,a0b9c7bbcd0d3bd2ab6d9301e9f0d93f0a5144ffe72b48df72e4c90e7476f193,16603,PNG IEND chunk removed; 31 filler bytes follow
+decoy_signature,png_06,decoy_signature_png_06.img,False,69,16521,0,a0b9c7bbcd0d3bd2ab6d9301e9f0d93f0a5144ffe72b48df72e4c90e7476f193,140,fake PNG signature and IEND marker; no genuine file
+fragmented,png_06,fragmented_png_06.img,True,64,16521,16521,a0b9c7bbcd0d3bd2ab6d9301e9f0d93f0a5144ffe72b48df72e4c90e7476f193,17128,512 filler bytes inserted inside PNG
+baseline,png_07,baseline_png_07.img,True,62,25753,25753,b3b5bf191c770cdbff037d9d7e24d633dd1cba55cdc4f67ab64f1421ded30479,25846,intact contiguous PNG
+truncated,png_07,truncated_png_07.img,True,63,25753,25741,b3b5bf191c770cdbff037d9d7e24d633dd1cba55cdc4f67ab64f1421ded30479,25835,PNG IEND chunk removed; 31 filler bytes follow
+decoy_signature,png_07,decoy_signature_png_07.img,False,69,25753,0,b3b5bf191c770cdbff037d9d7e24d633dd1cba55cdc4f67ab64f1421ded30479,140,fake PNG signature and IEND marker; no genuine file
+fragmented,png_07,fragmented_png_07.img,True,64,25753,25753,b3b5bf191c770cdbff037d9d7e24d633dd1cba55cdc4f67ab64f1421ded30479,26360,512 filler bytes inserted inside PNG
+baseline,png_08,baseline_png_08.img,True,62,37038,37038,96edb4947b1033835b8ea1d9f4329b12e03554f129a17b711ec212cfd15d300e,37131,intact contiguous PNG
+truncated,png_08,truncated_png_08.img,True,63,37038,37026,96edb4947b1033835b8ea1d9f4329b12e03554f129a17b711ec212cfd15d300e,37120,PNG IEND chunk removed; 31 filler bytes follow
+decoy_signature,png_08,decoy_signature_png_08.img,False,69,37038,0,96edb4947b1033835b8ea1d9f4329b12e03554f129a17b711ec212cfd15d300e,140,fake PNG signature and IEND marker; no genuine file
+fragmented,png_08,fragmented_png_08.img,True,64,37038,37038,96edb4947b1033835b8ea1d9f4329b12e03554f129a17b711ec212cfd15d300e,37645,512 filler bytes inserted inside PNG
+baseline,png_09,baseline_png_09.img,True,62,50371,50371,20353e3e88bd7a6e427cf7203c0be7294643532da549cfb1cca90c462db49b65,50464,intact contiguous PNG
+truncated,png_09,truncated_png_09.img,True,63,50371,50359,20353e3e88bd7a6e427cf7203c0be7294643532da549cfb1cca90c462db49b65,50453,PNG IEND chunk removed; 31 filler bytes follow
+decoy_signature,png_09,decoy_signature_png_09.img,False,69,50371,0,20353e3e88bd7a6e427cf7203c0be7294643532da549cfb1cca90c462db49b65,140,fake PNG signature and IEND marker; no genuine file
+fragmented,png_09,fragmented_png_09.img,True,64,50371,50371,20353e3e88bd7a6e427cf7203c0be7294643532da549cfb1cca90c462db49b65,50978,512 filler bytes inserted inside PNG
+baseline,png_10,baseline_png_10.img,True,62,65752,65752,6a27044dc69694530afd18b60fa4f92ac9c8b26f6ed1145998a2f2c2ce641cd5,65845,intact contiguous PNG
+truncated,png_10,truncated_png_10.img,True,63,65752,65740,6a27044dc69694530afd18b60fa4f92ac9c8b26f6ed1145998a2f2c2ce641cd5,65834,PNG IEND chunk removed; 31 filler bytes follow
+decoy_signature,png_10,decoy_signature_png_10.img,False,69,65752,0,6a27044dc69694530afd18b60fa4f92ac9c8b26f6ed1145998a2f2c2ce641cd5,140,fake PNG signature and IEND marker; no genuine file
+fragmented,png_10,fragmented_png_10.img,True,64,65752,65752,6a27044dc69694530afd18b60fa4f92ac9c8b26f6ed1145998a2f2c2ce641cd5,66359,512 filler bytes inserted inside PNG

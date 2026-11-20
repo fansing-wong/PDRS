@@ -1,0 +1,2 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+pdf_000000000048_0001.pdf,pdf,72,541,469,True,True,pypdf parsed PDF candidate (1 page(s)),e7c4f43c97a1c8e90fe7cb1cb2dd9d4b560841f3ef498ede4fbe8ba08cd4870e

@@ -1,0 +1,5 @@
+scenario,samples,gap_bytes,pdrs_candidates_found,pdrs_complete_boundaries,pdrs_format_valid,pdrs_exact_source_hashes,reassembly_successes,reassembled_exact_source_hashes,pillow_decoded,decoded_pixels_equal_source
+baseline,10,0,10,10,10,10,10,10,10,10
+gap_64,10,64,10,10,0,0,10,10,10,10
+gap_512,10,512,10,10,0,0,10,10,10,10
+gap_4096,10,4096,10,10,0,0,10,10,10,10

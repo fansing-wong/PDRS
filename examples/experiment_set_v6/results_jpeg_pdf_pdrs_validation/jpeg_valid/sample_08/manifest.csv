@@ -1,0 +1,2 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+jpeg_000000000049_0001.jpg,jpeg,73,2341,2268,True,True,Pillow fully decoded JPEG candidate,2c3e673cfca76acb22b447fe9a991f6ecac772ab48428ebbc5bf5f0cdeebaa92

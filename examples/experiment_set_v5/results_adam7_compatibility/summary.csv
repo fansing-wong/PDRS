@@ -1,0 +1,3 @@
+kind,samples,candidate_detections,pdrs_structure_valid,sha256_exact_matches,pillow_decoded,decoded_pixel_matches,rejected_by_pdrs
+adam7,10,10,10,10,10,10,0
+control,10,10,10,10,10,10,0

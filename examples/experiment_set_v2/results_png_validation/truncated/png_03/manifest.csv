@@ -1,0 +1,2 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+png_00000000003f_0001.png,png,63,2478,2415,False,False,PNG chunk exceeds candidate boundary,d1bf62bf9018c11fae022d43610ffa2777f947a300cc7f076fb8c173e73f8a67

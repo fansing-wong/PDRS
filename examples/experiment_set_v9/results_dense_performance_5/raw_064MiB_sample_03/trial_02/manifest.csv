@@ -1,0 +1,8 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+jpeg_000000666666_0001.jpg,jpeg,6710886,6711807,921,True,True,Pillow fully decoded JPEG candidate,8fee23abd525f406c574d1a55d43dfe7619d0a0624516b1940db5e8342b662a8
+jpeg_0000010fdb2b_0002.jpg,jpeg,17816363,17870390,54027,True,False,JPEG decoder rejected candidate: UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x000001BD5E68F060>,c319018b76a57839bf82bca4733b1401e8683e80e225424735fa352bf404d751
+jpeg_0000018cb615_0003.jpg,jpeg,25998869,25999953,1084,True,False,JPEG decoder rejected candidate: OSError: Truncated File Read,a1f9d40859fc5a86c57e7319cd2cfd7c0500ffedee66c1347fa31e869615cdb1
+png_000002000000_0004.png,png,33554432,33554892,460,True,True,"PNG chunks, CRCs, zlib stream, scanline lengths, and interlace layout valid",b04829f6a7254e16bc5818836cdae4da3ed7d64b13f1fbee11dbe742ae794dfd
+jpeg_000002c9fb8b_0005.jpg,jpeg,46791563,46998738,207175,True,False,JPEG decoder rejected candidate: UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x000001BD5E7B74C0>,931fd65be9250fee3761feb6e632d430192204a85b1b2b3df86d694c8822ab9c
+jpeg_000002cdebe4_0006.jpg,jpeg,47049700,47264542,214842,True,False,JPEG decoder rejected candidate: UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x000001BD5E7B7470>,3aca7ee9c21ec7fefdef5a53863d14f6e5e0fb916808ae0e8969237e243bf770
+pdf_000003999999_0007.pdf,pdf,60397977,60398446,469,True,True,pypdf parsed PDF candidate (1 page(s)),c55fb19c426a2856b97ade7123f8039d8fd8a0f1d7d13c00f64300d52e775949

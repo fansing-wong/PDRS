@@ -1,0 +1,4 @@
+raw_image_size_mib,repeats,mean_seconds,median_seconds,min_seconds,max_seconds,mean_unique_offsets_parsed,all_exact_hashes,all_pixels_equal
+1,3,0.969836,0.918221,0.720880,1.270406,11423.0,3,3
+16,3,1.003839,1.010546,0.905413,1.095558,11423.0,3,3
+64,3,1.101726,0.935294,0.833817,1.536067,11423.0,3,3

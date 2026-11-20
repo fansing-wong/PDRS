@@ -1,0 +1,4 @@
+scenario,samples,pdrs_format_valid,pdrs_exact_source_hashes,greedy_exact_source_hashes,greedy_pillow_decoded,mean_greedy_runtime_seconds,max_greedy_runtime_seconds,validated_exact_source_hashes,validated_pillow_decoded,validated_pixels_equal_source,mean_validated_runtime_seconds,max_validated_runtime_seconds,gap1_bytes,decoys_gap1,gap2_bytes,decoys_gap2,gap3_bytes,decoys_gap3,gap4_bytes,decoys_gap4,gap5_bytes,decoys_gap5
+baseline,10,10,10,10,10,0.000108,0.000186,10,10,10,0.004266,0.040267,0,0,0,0,0,0,0,0,0,0
+five_gaps_simple,10,0,0,10,10,0.001151,0.002025,10,10,10,0.009816,0.020244,64,0,128,0,256,0,512,0,1024,0
+five_gaps_with_decoys,10,0,0,0,0,0.001167,0.001684,10,10,10,15.327268,17.474202,64,1,128,2,256,3,512,4,1024,5

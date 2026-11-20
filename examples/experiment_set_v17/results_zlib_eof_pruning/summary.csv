@@ -1,0 +1,2 @@
+samples,v17_mean_seconds,v18_mean_seconds,v19_mean_seconds,mean_speedup_vs_v17,mean_speedup_vs_v18,incomplete_zlib_paths_rejected,zlib_error_branches_rejected,pillow_checks_total,pillow_rejected_paths_total,mean_visited_nodes,all_exact_hashes,all_pillow_decoded,all_pixels_equal
+10,15.327268,13.393092,13.451050,1.14,1.00,145420,7190,10,0,29397.0,10,10,10

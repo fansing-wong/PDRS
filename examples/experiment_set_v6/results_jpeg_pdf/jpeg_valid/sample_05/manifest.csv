@@ -1,0 +1,2 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+jpeg_000000000049_0001.jpg,jpeg,73,1759,1686,True,,Format structure validation not implemented,b6c5f00e4518da14bfed67be8134172cffa73c1d3da0cee2bc7959c060661ef3

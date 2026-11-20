@@ -1,0 +1,5 @@
+scenario,samples,pdrs_format_valid,independent_parser_accepts,validator_agreements
+jpeg_decoy,10,0,0,10
+jpeg_valid,10,10,10,10
+pdf_decoy,10,0,0,10
+pdf_valid,10,10,10,10

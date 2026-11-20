@@ -1,0 +1,7 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+jpeg_000000199999_0001.jpg,jpeg,1677721,1678642,921,True,True,Pillow fully decoded JPEG candidate,8fee23abd525f406c574d1a55d43dfe7619d0a0624516b1940db5e8342b662a8
+jpeg_0000003f3ddd_0002.jpg,jpeg,4144605,4191359,46754,True,False,JPEG decoder rejected candidate: UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x000002308218F1F0>,0639988603ad3ec385f80f8e9a31f015ba1671edbe1d1218b9917d7956ae11a7
+jpeg_000000575058_0003.jpg,jpeg,5722200,5758792,36592,True,False,JPEG decoder rejected candidate: UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x000002308218F060>,09c91fa592566176cff6191b7f5e57f54804f8ffbdf31fe2a5568d0bfa5c6900
+jpeg_0000005ac5d7_0004.jpg,jpeg,5948887,5985427,36540,True,False,JPEG decoder rejected candidate: UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230834B38D0>,476a17d279e31eccc4d51cb712ee8517d655dfa4b5495869a1905f00dc86a3fc
+png_000000800000_0005.png,png,8388608,8389068,460,True,True,"PNG chunks, CRCs, zlib stream, scanline lengths, and interlace layout valid",b04829f6a7254e16bc5818836cdae4da3ed7d64b13f1fbee11dbe742ae794dfd
+pdf_000000e66666_0006.pdf,pdf,15099494,15099963,469,True,True,pypdf parsed PDF candidate (1 page(s)),c55fb19c426a2856b97ade7123f8039d8fd8a0f1d7d13c00f64300d52e775949

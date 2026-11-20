@@ -1,0 +1,2 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+png_000000000040_0001.png,png,64,9908,9844,True,False,PNG CRC mismatch in IDAT chunk,a823d94454d9e6771b30a46d1ada8aaa2b2b547b8deae3c2349998590fc7580e

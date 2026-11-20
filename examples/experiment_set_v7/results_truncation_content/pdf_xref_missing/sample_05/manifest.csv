@@ -1,0 +1,2 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+pdf_000000000055_0001.pdf,pdf,85,393,308,False,False,PDF parser rejected candidate: PdfReadError: EOF marker not found,b9645142d2e0fad7d0c366a0034e88c1d3a5209f42b9ddc9851736bf605ae096

@@ -1,0 +1,5 @@
+scenario,independent_samples,candidate_count,true_header_candidates,false_positive_candidates,format_valid_candidates,valid_candidate_precision,false_positive_validation_rejections,exact_sha256_matches,mean_runtime_seconds
+baseline,10,10,10,0,10,1.0000,N/A,10,0.450331
+decoy_signature,10,10,0,10,0,N/A,1.0000,0,0.477626
+fragmented,10,10,10,0,0,N/A,N/A,0,0.481501
+truncated,10,10,10,0,0,N/A,N/A,0,0.474853

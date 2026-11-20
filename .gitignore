@@ -1,0 +1,49 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated raw images and binary source/recovery data.
+# Keep experiment CSV/Markdown summaries for review and reproducibility.
+/examples/experiment_set*/*.img
+/examples/experiment_set*/**/*.img
+/examples/experiment_set*/*.raw
+/examples/experiment_set*/**/*.raw
+/examples/experiment_set*/*.bmp
+/examples/experiment_set*/**/*.bmp
+/examples/experiment_set*/*.png
+/examples/experiment_set*/**/*.png
+/examples/experiment_set*/*.jpg
+/examples/experiment_set*/**/*.jpg
+/examples/experiment_set*/*.jpeg
+/examples/experiment_set*/**/*.jpeg
+/examples/experiment_set*/*.pdf
+/examples/experiment_set*/**/*.pdf
+/examples/fat32_structure_demo/*.img
+/examples/fat32_structure_demo/**/*.img
+/examples/exfat_structure_demo/*.img
+/examples/exfat_structure_demo/**/*.img
+
+# Generated GUI smoke-test output and standalone generated demos
+/examples/sample.img
+/examples/ground_truth.csv
+/examples/fat32_structure_demo/gui_structure_report.json
+/examples/exfat_structure_demo/gui_structure_report.json
+/examples/synthetic_sources/
+/examples/recovered/
+/examples/gui_*/
+/examples/bmp_demo_set/
+
+# Local editor and OS files
+.DS_Store
+Thumbs.db
+desktop.ini

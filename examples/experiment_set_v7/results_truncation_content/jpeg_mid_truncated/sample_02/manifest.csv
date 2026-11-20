@@ -1,0 +1,2 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+jpeg_000000000057_0001.jpg,jpeg,87,560,473,False,False,JPEG decoder rejected candidate: OSError: image file is truncated (41 bytes not processed),7e95523719728a140ff7ed53bdeb8df379a4a21eaedc9e865a3fad7f8cd6ff68

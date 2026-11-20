@@ -1,0 +1,5 @@
+scenario,samples,true_targets,candidates_found,true_header_detections,false_positives,exact_hash_matches,independent_parser_accepts,content_equivalent
+jpeg_decoy,10,0,10,0,10,0,0,0
+jpeg_valid,10,10,10,10,0,10,10,10
+pdf_decoy,10,0,10,0,10,0,0,0
+pdf_valid,10,10,10,10,0,10,10,10

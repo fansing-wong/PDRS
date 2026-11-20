@@ -1,0 +1,2 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+pdf_000000000048_0001.pdf,pdf,72,541,469,True,,Format structure validation not implemented,ae3bf43574c072991478d645f6d61c54f409f402bbf4b45f263abab099293587

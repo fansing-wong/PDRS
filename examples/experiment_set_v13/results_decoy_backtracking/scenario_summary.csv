@@ -1,0 +1,4 @@
+scenario,samples,gap_bytes,decoy_chunk_bytes,pdrs_format_valid,pdrs_exact_source_hashes,greedy_reassembly_successes,greedy_exact_source_hashes,greedy_pillow_decoded,validated_reassembly_successes,validated_exact_source_hashes,validated_pillow_decoded,validated_pixels_equal_source
+baseline,10,0,0,10,10,10,10,10,10,10,10,10
+simple_gap_64,10,64,0,0,0,10,10,10,10,10,10,10
+decoy_chunk_gap_64,10,64,22,0,0,10,0,0,10,10,10,10

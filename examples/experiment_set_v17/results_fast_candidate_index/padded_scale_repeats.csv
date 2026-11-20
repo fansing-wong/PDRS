@@ -1,0 +1,10 @@
+raw_image_size_mib,trial,elapsed_seconds,unique_offsets_parsed,indexed_crc_chunks,visited_nodes,exact_source_hash,pixels_equal_source
+1,1,1.270406,11423,22,29397,True,True
+1,2,0.918221,11423,22,29397,True,True
+1,3,0.720880,11423,22,29397,True,True
+16,1,1.095558,11423,22,29397,True,True
+16,2,0.905413,11423,22,29397,True,True
+16,3,1.010546,11423,22,29397,True,True
+64,1,0.833817,11423,22,29397,True,True
+64,2,1.536067,11423,22,29397,True,True
+64,3,0.935294,11423,22,29397,True,True

@@ -1,0 +1,41 @@
+scenario,sample_id,target_present,candidate_found,pdrs_format_valid,independent_parser_accepted,validators_agree,validation_note
+jpeg_valid,sample_01,True,True,True,True,True,Pillow fully decoded JPEG candidate
+jpeg_decoy,sample_01,False,True,False,False,True,JPEG decoder rejected candidate: OSError: Truncated File Read
+pdf_valid,sample_01,True,True,True,True,True,pypdf parsed PDF candidate (1 page(s))
+pdf_decoy,sample_01,False,True,False,False,True,PDF parser rejected candidate: PdfReadError: startxref not found
+jpeg_valid,sample_02,True,True,True,True,True,Pillow fully decoded JPEG candidate
+jpeg_decoy,sample_02,False,True,False,False,True,JPEG decoder rejected candidate: OSError: Truncated File Read
+pdf_valid,sample_02,True,True,True,True,True,pypdf parsed PDF candidate (1 page(s))
+pdf_decoy,sample_02,False,True,False,False,True,PDF parser rejected candidate: PdfReadError: startxref not found
+jpeg_valid,sample_03,True,True,True,True,True,Pillow fully decoded JPEG candidate
+jpeg_decoy,sample_03,False,True,False,False,True,JPEG decoder rejected candidate: OSError: Truncated File Read
+pdf_valid,sample_03,True,True,True,True,True,pypdf parsed PDF candidate (1 page(s))
+pdf_decoy,sample_03,False,True,False,False,True,PDF parser rejected candidate: PdfReadError: startxref not found
+jpeg_valid,sample_04,True,True,True,True,True,Pillow fully decoded JPEG candidate
+jpeg_decoy,sample_04,False,True,False,False,True,JPEG decoder rejected candidate: OSError: Truncated File Read
+pdf_valid,sample_04,True,True,True,True,True,pypdf parsed PDF candidate (1 page(s))
+pdf_decoy,sample_04,False,True,False,False,True,PDF parser rejected candidate: PdfReadError: startxref not found
+jpeg_valid,sample_05,True,True,True,True,True,Pillow fully decoded JPEG candidate
+jpeg_decoy,sample_05,False,True,False,False,True,JPEG decoder rejected candidate: OSError: Truncated File Read
+pdf_valid,sample_05,True,True,True,True,True,pypdf parsed PDF candidate (1 page(s))
+pdf_decoy,sample_05,False,True,False,False,True,PDF parser rejected candidate: PdfReadError: startxref not found
+jpeg_valid,sample_06,True,True,True,True,True,Pillow fully decoded JPEG candidate
+jpeg_decoy,sample_06,False,True,False,False,True,JPEG decoder rejected candidate: OSError: Truncated File Read
+pdf_valid,sample_06,True,True,True,True,True,pypdf parsed PDF candidate (1 page(s))
+pdf_decoy,sample_06,False,True,False,False,True,PDF parser rejected candidate: PdfReadError: startxref not found
+jpeg_valid,sample_07,True,True,True,True,True,Pillow fully decoded JPEG candidate
+jpeg_decoy,sample_07,False,True,False,False,True,JPEG decoder rejected candidate: OSError: Truncated File Read
+pdf_valid,sample_07,True,True,True,True,True,pypdf parsed PDF candidate (1 page(s))
+pdf_decoy,sample_07,False,True,False,False,True,PDF parser rejected candidate: PdfReadError: startxref not found
+jpeg_valid,sample_08,True,True,True,True,True,Pillow fully decoded JPEG candidate
+jpeg_decoy,sample_08,False,True,False,False,True,JPEG decoder rejected candidate: OSError: Truncated File Read
+pdf_valid,sample_08,True,True,True,True,True,pypdf parsed PDF candidate (1 page(s))
+pdf_decoy,sample_08,False,True,False,False,True,PDF parser rejected candidate: PdfReadError: startxref not found
+jpeg_valid,sample_09,True,True,True,True,True,Pillow fully decoded JPEG candidate
+jpeg_decoy,sample_09,False,True,False,False,True,JPEG decoder rejected candidate: OSError: Truncated File Read
+pdf_valid,sample_09,True,True,True,True,True,pypdf parsed PDF candidate (1 page(s))
+pdf_decoy,sample_09,False,True,False,False,True,PDF parser rejected candidate: PdfReadError: startxref not found
+jpeg_valid,sample_10,True,True,True,True,True,Pillow fully decoded JPEG candidate
+jpeg_decoy,sample_10,False,True,False,False,True,JPEG decoder rejected candidate: OSError: Truncated File Read
+pdf_valid,sample_10,True,True,True,True,True,pypdf parsed PDF candidate (1 page(s))
+pdf_decoy,sample_10,False,True,False,False,True,PDF parser rejected candidate: PdfReadError: startxref not found

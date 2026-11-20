@@ -1,0 +1,5 @@
+scenario,samples,gap_bytes,gap_location,pdrs_candidates_found,pdrs_complete_boundaries,pdrs_format_valid,pdrs_exact_source_hashes,reassembly_successes,reassembled_exact_source_hashes,pillow_decoded,decoded_pixels_equal_source
+baseline,10,0,none,10,10,10,10,10,10,10,10
+aligned_gap_4096,10,4096,between_idat_chunks,10,10,0,0,10,10,10,10
+aligned_gap_8192,10,8192,between_idat_chunks,10,10,0,0,0,0,0,0
+inside_idat_gap_64,10,64,inside_first_idat_payload,10,10,0,0,0,0,0,0

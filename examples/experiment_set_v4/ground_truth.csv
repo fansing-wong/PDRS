@@ -1,0 +1,11 @@
+variant,source_filename,image_filename,mode_after_pillow_decode,width,height,compression_level,adam7_requested,interlace_flag_in_png,expected_offset,source_size_bytes,source_sha256
+rgb8_small,rgb8_small.png,rgb8_small.img,RGB,16,8,6,False,0,64,460,b04829f6a7254e16bc5818836cdae4da3ed7d64b13f1fbee11dbe742ae794dfd
+rgba8,rgba8.png,rgba8.img,RGBA,21,13,6,False,0,59,1173,b8c82bda0df6182e3d0384e794363a979fe77bbd4e1ff8ef6af6a9e9280a4bc4
+grayscale8,grayscale8.png,grayscale8.img,L,19,7,6,False,0,64,208,7d98881cd75d31cd6a2d10fc1164025836ede51e23b5b9debe7275c523499c3b
+grayscale1,grayscale1.png,grayscale1.img,1,21,9,6,False,0,64,102,ac696c42687e8ce90e6badbe9703dc3e66dceee8e60a757718c89fbad1e54d24
+palette8,palette8.png,palette8.img,P,33,17,6,False,0,62,1154,04ea4951c2430e0e5375700d2f6f8129bb5481f2bc33004df6c8dc797fbe71f3
+grayscale16,grayscale16.png,grayscale16.img,I;16,22,10,6,False,0,65,518,c18c2633faa2455e7d0355037dd17bebd0d5bf34d6d80964f55aa5a84a537891
+grayscale_alpha8,grayscale_alpha8.png,grayscale_alpha8.img,LA,13,11,6,False,0,70,365,167e77e9ccfb75b453836a26025c6a7722227b666e67224fbba55d890f8d2042
+rgb8_large_low_compression,rgb8_large_low_compression.png,rgb8_large_low_compression.img,RGB,128,64,1,False,0,80,26052,98f2a44e09449ec179efbdc26f8a2fbb5e5d1269398bcd07728729e45626928b
+rgba8_large_high_compression,rgba8_large_high_compression.png,rgba8_large_high_compression.img,RGBA,96,64,9,False,0,82,24708,e8774e89a84909fbd3ca7958510ec80cfcd40105b1aa14375c591bbac1d70fd4
+rgb8_adam7_requested,rgb8_adam7_requested.png,rgb8_adam7_requested.img,RGB,32,32,6,True,0,74,3172,d4446ede7e2a898a682e16e670383fcda3574eeb8e524128b74cbf520a2a2af1

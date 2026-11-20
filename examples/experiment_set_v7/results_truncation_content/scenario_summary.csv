@@ -1,0 +1,5 @@
+scenario,samples,candidate_detections,complete_boundaries,pdrs_format_valid,exact_sha256_matches,independent_parser_accepts,decoded_content_equivalent
+jpeg_eoi_missing,10,10,0,10,0,10,10
+jpeg_mid_truncated,10,10,0,0,0,0,0
+pdf_eof_missing,10,10,0,0,0,0,0
+pdf_xref_missing,10,10,0,0,0,0,0

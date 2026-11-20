@@ -1,0 +1,2 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+png_000000000043_0001.png,png,67,9399,9332,True,True,PNG chunk structure and CRCs valid,a8407e987bd16ce2b6ab8a04eb602fe37b2a783d51132a840417e4f8c9765021

@@ -1,0 +1,11 @@
+image_filename,v17_full_backtracking_seconds,v20_full_index_seconds,v21_lazy_index_seconds,speedup_vs_v17,visited_nodes,unique_offsets_parsed,indexed_crc_chunks,idat_candidates,zlib_rejected_branches,incomplete_zlib_paths,pillow_checks,pillow_rejected_paths,exact_source_hash,pixels_equal_source
+five_gaps_with_decoys_sample_01.img,17.474202,0.988780,1.384442,12.62,29397,10289,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_02.img,16.662761,0.988780,1.246315,13.37,29397,10289,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_03.img,17.191310,0.988780,1.191618,14.43,29397,10289,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_04.img,14.464343,0.988780,1.011571,14.30,29397,10289,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_05.img,14.443376,0.988780,1.003752,14.39,29397,10289,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_06.img,14.137112,0.988780,0.815564,17.33,29397,10289,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_07.img,16.976892,0.988780,0.769009,22.08,29397,10289,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_08.img,14.864874,0.988780,0.598130,24.85,29397,10289,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_09.img,13.980019,0.988780,1.222112,11.44,29397,10289,22,30115,719,14542,1,0,True,True
+five_gaps_with_decoys_sample_10.img,13.077789,0.988780,1.459680,8.96,29397,10289,22,30115,719,14542,1,0,True,True

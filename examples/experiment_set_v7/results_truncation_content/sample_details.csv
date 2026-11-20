@@ -1,0 +1,41 @@
+scenario,sample_id,format,candidate_found,candidate_size_bytes,included_source_bytes,complete_boundary,pdrs_format_valid,sha256_exact_match,independent_parser_accepted,decoded_content_equivalent,parser_note
+jpeg_eoi_missing,sample_01,jpeg,True,934,919,False,True,False,True,True,Pillow decoded JPEG
+jpeg_mid_truncated,sample_01,jpeg,True,567,552,False,False,False,False,False,OSError: Truncated File Read
+pdf_eof_missing,sample_01,pdf,True,478,463,False,False,False,False,False,PdfReadError: EOF marker not found
+pdf_xref_missing,sample_01,pdf,True,308,293,False,False,False,False,False,PdfReadError: EOF marker not found
+jpeg_eoi_missing,sample_02,jpeg,True,777,762,False,True,False,True,True,Pillow decoded JPEG
+jpeg_mid_truncated,sample_02,jpeg,True,473,458,False,False,False,False,False,OSError: image file is truncated (41 bytes not processed)
+pdf_eof_missing,sample_02,pdf,True,478,463,False,False,False,False,False,PdfReadError: EOF marker not found
+pdf_xref_missing,sample_02,pdf,True,308,293,False,False,False,False,False,PdfReadError: EOF marker not found
+jpeg_eoi_missing,sample_03,jpeg,True,1208,1193,False,True,False,True,True,Pillow decoded JPEG
+jpeg_mid_truncated,sample_03,jpeg,True,732,717,False,False,False,False,False,OSError: image file is truncated (3 bytes not processed)
+pdf_eof_missing,sample_03,pdf,True,478,463,False,False,False,False,False,PdfReadError: EOF marker not found
+pdf_xref_missing,sample_03,pdf,True,308,293,False,False,False,False,False,PdfReadError: EOF marker not found
+jpeg_eoi_missing,sample_04,jpeg,True,1026,1011,False,True,False,True,True,Pillow decoded JPEG
+jpeg_mid_truncated,sample_04,jpeg,True,622,607,False,False,False,False,False,OSError: image file is truncated (64 bytes not processed)
+pdf_eof_missing,sample_04,pdf,True,478,463,False,False,False,False,False,PdfReadError: EOF marker not found
+pdf_xref_missing,sample_04,pdf,True,308,293,False,False,False,False,False,PdfReadError: EOF marker not found
+jpeg_eoi_missing,sample_05,jpeg,True,1699,1684,False,True,False,True,True,Pillow decoded JPEG
+jpeg_mid_truncated,sample_05,jpeg,True,1026,1011,False,False,False,False,False,OSError: image file is truncated (10 bytes not processed)
+pdf_eof_missing,sample_05,pdf,True,478,463,False,False,False,False,False,PdfReadError: EOF marker not found
+pdf_xref_missing,sample_05,pdf,True,308,293,False,False,False,False,False,PdfReadError: EOF marker not found
+jpeg_eoi_missing,sample_06,jpeg,True,1623,1608,False,True,False,True,True,Pillow decoded JPEG
+jpeg_mid_truncated,sample_06,jpeg,True,981,966,False,False,False,False,False,OSError: image file is truncated (12 bytes not processed)
+pdf_eof_missing,sample_06,pdf,True,478,463,False,False,False,False,False,PdfReadError: EOF marker not found
+pdf_xref_missing,sample_06,pdf,True,308,293,False,False,False,False,False,PdfReadError: EOF marker not found
+jpeg_eoi_missing,sample_07,jpeg,True,2196,2181,False,True,False,True,True,Pillow decoded JPEG
+jpeg_mid_truncated,sample_07,jpeg,True,1324,1309,False,False,False,False,False,OSError: image file is truncated (1 bytes not processed)
+pdf_eof_missing,sample_07,pdf,True,478,463,False,False,False,False,False,PdfReadError: EOF marker not found
+pdf_xref_missing,sample_07,pdf,True,308,293,False,False,False,False,False,PdfReadError: EOF marker not found
+jpeg_eoi_missing,sample_08,jpeg,True,2281,2266,False,True,False,True,True,Pillow decoded JPEG
+jpeg_mid_truncated,sample_08,jpeg,True,1375,1360,False,False,False,False,False,OSError: image file is truncated (63 bytes not processed)
+pdf_eof_missing,sample_08,pdf,True,478,463,False,False,False,False,False,PdfReadError: EOF marker not found
+pdf_xref_missing,sample_08,pdf,True,308,293,False,False,False,False,False,PdfReadError: EOF marker not found
+jpeg_eoi_missing,sample_09,jpeg,True,3280,3265,False,True,False,True,True,Pillow decoded JPEG
+jpeg_mid_truncated,sample_09,jpeg,True,1975,1960,False,False,False,False,False,OSError: image file is truncated (1 bytes not processed)
+pdf_eof_missing,sample_09,pdf,True,478,463,False,False,False,False,False,PdfReadError: EOF marker not found
+pdf_xref_missing,sample_09,pdf,True,308,293,False,False,False,False,False,PdfReadError: EOF marker not found
+jpeg_eoi_missing,sample_10,jpeg,True,3744,3729,False,True,False,True,True,Pillow decoded JPEG
+jpeg_mid_truncated,sample_10,jpeg,True,2253,2238,False,False,False,False,False,OSError: image file is truncated (194 bytes not processed)
+pdf_eof_missing,sample_10,pdf,True,478,463,False,False,False,False,False,PdfReadError: EOF marker not found
+pdf_xref_missing,sample_10,pdf,True,308,293,False,False,False,False,False,PdfReadError: EOF marker not found

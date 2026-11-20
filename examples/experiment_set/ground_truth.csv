@@ -1,0 +1,5 @@
+scenario,filename,format,expected_offset,original_size_bytes,included_bytes,original_sha256,scenario_note
+baseline,sample.png,png,55,78,78,92731f42caa413eae045dcc8ae57a8c3a1e9bfbaad13a0c3432051f48d2a4bbf,intact contiguous control
+truncated,sample.png,png,56,78,66,92731f42caa413eae045dcc8ae57a8c3a1e9bfbaad13a0c3432051f48d2a4bbf,IEND chunk removed
+decoy_signature,no genuine file,none,52,0,0,e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,signature-like text should produce a false positive
+fragmented,sample.png,png,57,78,78,92731f42caa413eae045dcc8ae57a8c3a1e9bfbaad13a0c3432051f48d2a4bbf,512 filler bytes inserted inside the PNG

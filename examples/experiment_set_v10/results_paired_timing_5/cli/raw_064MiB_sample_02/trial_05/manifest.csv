@@ -1,0 +1,9 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+jpeg_000000142f6c_0001.jpg,jpeg,1322860,1442094,119234,True,False,JPEG decoder rejected candidate: UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x0000021A8156D350>,f79f3ecf031d51becb0ae92adb37390b9dee0ef016cdc1eb89eb1a3fe2e6e2f7
+jpeg_00000030e7dc_0002.jpg,jpeg,3205084,3280179,75095,False,False,JPEG decoder rejected candidate: UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x0000021A859B3290>,ce515fa12723922efd65ca508e4ce70c15f867159e409ddbc71bb68e2a5246fc
+jpeg_000000320d33_0003.jpg,jpeg,3280179,3281799,1620,True,False,JPEG decoder rejected candidate: UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x0000021A859B32E0>,76abd6af4c641f4fe6d75228e03d62da8bd63d20a12a18210b86ae9eeac57659
+jpeg_000000456b10_0004.jpg,jpeg,4549392,4560974,11582,True,False,JPEG decoder rejected candidate: UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x0000021A859B3330>,b02739a942b337b4bdb761890edeaabdc8b9e33e12742259a26dcd8b3466aaa7
+jpeg_000000666666_0005.jpg,jpeg,6710886,6711807,921,True,True,Pillow fully decoded JPEG candidate,8fee23abd525f406c574d1a55d43dfe7619d0a0624516b1940db5e8342b662a8
+png_000002000000_0006.png,png,33554432,33554892,460,True,True,"PNG chunks, CRCs, zlib stream, scanline lengths, and interlace layout valid",b04829f6a7254e16bc5818836cdae4da3ed7d64b13f1fbee11dbe742ae794dfd
+jpeg_0000032c0239_0007.jpg,jpeg,53215801,53311124,95323,True,False,JPEG decoder rejected candidate: UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x0000021A859B3A60>,8160a5b4a88b91321c012b361d4a2841257e4c511b50de7a4c842a69788c6dc8
+pdf_000003999999_0008.pdf,pdf,60397977,60398446,469,True,True,pypdf parsed PDF candidate (1 page(s)),c55fb19c426a2856b97ade7123f8039d8fd8a0f1d7d13c00f64300d52e775949

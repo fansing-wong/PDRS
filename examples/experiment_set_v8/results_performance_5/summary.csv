@@ -1,0 +1,4 @@
+image_size_mib,trials,mean_runtime_seconds,median_runtime_seconds,min_runtime_seconds,max_runtime_seconds,mean_end_to_end_mib_per_second,candidates_per_run,exact_matches_per_run
+1,5,0.611852,0.610787,0.588498,0.625462,1.635189,3,3
+16,5,0.675295,0.664360,0.632401,0.727197,23.754772,3,3
+64,5,0.708628,0.708977,0.707383,0.709977,90.315508,3,3

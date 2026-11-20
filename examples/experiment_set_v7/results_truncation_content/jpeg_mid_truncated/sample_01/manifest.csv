@@ -1,0 +1,2 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+jpeg_000000000057_0001.jpg,jpeg,87,654,567,False,False,JPEG decoder rejected candidate: OSError: Truncated File Read,18aa18006609b68b75ce4ddd554de47efb85e52c87fba5d9199ea107a22d852f

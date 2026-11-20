@@ -1,0 +1,2 @@
+samples,v17_mean_seconds,v20_full_index_mean_seconds,v21_lazy_index_mean_seconds,v22_fast_lazy_index_mean_seconds,v22_max_seconds,mean_speedup_vs_v17,mean_unique_offsets_parsed,mean_visited_nodes,pillow_checks_total,all_exact_hashes,all_pixels_equal
+10,15.327268,0.988780,1.070219,1.268551,1.556574,12.08,10288.0,29397.0,10,10,10

@@ -1,0 +1,41 @@
+scenario,sample_id,format,image_filename,source_filename,expected_offset,original_size_bytes,original_sha256,included_source_bytes,scenario_note
+jpeg_eoi_missing,sample_01,jpeg,jpeg_eoi_missing_sample_01.img,sample_01.jpeg,85,921,8fee23abd525f406c574d1a55d43dfe7619d0a0624516b1940db5e8342b662a8,919,Only the final JPEG EOI marker was removed
+jpeg_mid_truncated,sample_01,jpeg,jpeg_mid_truncated_sample_01.img,sample_01.jpeg,87,921,8fee23abd525f406c574d1a55d43dfe7619d0a0624516b1940db5e8342b662a8,552,JPEG was cut at 60% of its original byte length
+pdf_eof_missing,sample_01,pdf,pdf_eof_missing_sample_01.img,sample_01.pdf,84,469,c55fb19c426a2856b97ade7123f8039d8fd8a0f1d7d13c00f64300d52e775949,463,PDF %%EOF marker and trailing bytes were removed
+pdf_xref_missing,sample_01,pdf,pdf_xref_missing_sample_01.img,sample_01.pdf,85,469,c55fb19c426a2856b97ade7123f8039d8fd8a0f1d7d13c00f64300d52e775949,293,PDF was cut immediately before the xref table
+jpeg_eoi_missing,sample_02,jpeg,jpeg_eoi_missing_sample_02.img,sample_02.jpeg,85,764,868a6150e99dffd27cf64513d391760948152eab106a8c5536bd91ea79fe9696,762,Only the final JPEG EOI marker was removed
+jpeg_mid_truncated,sample_02,jpeg,jpeg_mid_truncated_sample_02.img,sample_02.jpeg,87,764,868a6150e99dffd27cf64513d391760948152eab106a8c5536bd91ea79fe9696,458,JPEG was cut at 60% of its original byte length
+pdf_eof_missing,sample_02,pdf,pdf_eof_missing_sample_02.img,sample_02.pdf,84,469,e7c4f43c97a1c8e90fe7cb1cb2dd9d4b560841f3ef498ede4fbe8ba08cd4870e,463,PDF %%EOF marker and trailing bytes were removed
+pdf_xref_missing,sample_02,pdf,pdf_xref_missing_sample_02.img,sample_02.pdf,85,469,e7c4f43c97a1c8e90fe7cb1cb2dd9d4b560841f3ef498ede4fbe8ba08cd4870e,293,PDF was cut immediately before the xref table
+jpeg_eoi_missing,sample_03,jpeg,jpeg_eoi_missing_sample_03.img,sample_03.jpeg,85,1195,a7722dc94ea71b5b3f4411798edb5ca937791095880b35d6cd052b12c1142e14,1193,Only the final JPEG EOI marker was removed
+jpeg_mid_truncated,sample_03,jpeg,jpeg_mid_truncated_sample_03.img,sample_03.jpeg,87,1195,a7722dc94ea71b5b3f4411798edb5ca937791095880b35d6cd052b12c1142e14,717,JPEG was cut at 60% of its original byte length
+pdf_eof_missing,sample_03,pdf,pdf_eof_missing_sample_03.img,sample_03.pdf,84,469,d3105a07c35047427da141fab424e3442f51752881a80398c17479cee688c1a7,463,PDF %%EOF marker and trailing bytes were removed
+pdf_xref_missing,sample_03,pdf,pdf_xref_missing_sample_03.img,sample_03.pdf,85,469,d3105a07c35047427da141fab424e3442f51752881a80398c17479cee688c1a7,293,PDF was cut immediately before the xref table
+jpeg_eoi_missing,sample_04,jpeg,jpeg_eoi_missing_sample_04.img,sample_04.jpeg,85,1013,e67b96d5fff5c458d8a2df17660b09044320927c4fdc0f8aa24e286319163019,1011,Only the final JPEG EOI marker was removed
+jpeg_mid_truncated,sample_04,jpeg,jpeg_mid_truncated_sample_04.img,sample_04.jpeg,87,1013,e67b96d5fff5c458d8a2df17660b09044320927c4fdc0f8aa24e286319163019,607,JPEG was cut at 60% of its original byte length
+pdf_eof_missing,sample_04,pdf,pdf_eof_missing_sample_04.img,sample_04.pdf,84,469,11ad00e5eff8fc2f9fe03a44a2d30ea31d3e0eb0025cab0088831e2d615a194e,463,PDF %%EOF marker and trailing bytes were removed
+pdf_xref_missing,sample_04,pdf,pdf_xref_missing_sample_04.img,sample_04.pdf,85,469,11ad00e5eff8fc2f9fe03a44a2d30ea31d3e0eb0025cab0088831e2d615a194e,293,PDF was cut immediately before the xref table
+jpeg_eoi_missing,sample_05,jpeg,jpeg_eoi_missing_sample_05.img,sample_05.jpeg,85,1686,b6c5f00e4518da14bfed67be8134172cffa73c1d3da0cee2bc7959c060661ef3,1684,Only the final JPEG EOI marker was removed
+jpeg_mid_truncated,sample_05,jpeg,jpeg_mid_truncated_sample_05.img,sample_05.jpeg,87,1686,b6c5f00e4518da14bfed67be8134172cffa73c1d3da0cee2bc7959c060661ef3,1011,JPEG was cut at 60% of its original byte length
+pdf_eof_missing,sample_05,pdf,pdf_eof_missing_sample_05.img,sample_05.pdf,84,469,ae3bf43574c072991478d645f6d61c54f409f402bbf4b45f263abab099293587,463,PDF %%EOF marker and trailing bytes were removed
+pdf_xref_missing,sample_05,pdf,pdf_xref_missing_sample_05.img,sample_05.pdf,85,469,ae3bf43574c072991478d645f6d61c54f409f402bbf4b45f263abab099293587,293,PDF was cut immediately before the xref table
+jpeg_eoi_missing,sample_06,jpeg,jpeg_eoi_missing_sample_06.img,sample_06.jpeg,85,1610,58e81f65600f308a394072e1321482eba178b9a28a11b767c2b1e584bb6bf747,1608,Only the final JPEG EOI marker was removed
+jpeg_mid_truncated,sample_06,jpeg,jpeg_mid_truncated_sample_06.img,sample_06.jpeg,87,1610,58e81f65600f308a394072e1321482eba178b9a28a11b767c2b1e584bb6bf747,966,JPEG was cut at 60% of its original byte length
+pdf_eof_missing,sample_06,pdf,pdf_eof_missing_sample_06.img,sample_06.pdf,84,469,558c6771bed32f47b80e7461bd92426fe1555b27c0111d91a7c8ace3317e56b0,463,PDF %%EOF marker and trailing bytes were removed
+pdf_xref_missing,sample_06,pdf,pdf_xref_missing_sample_06.img,sample_06.pdf,85,469,558c6771bed32f47b80e7461bd92426fe1555b27c0111d91a7c8ace3317e56b0,293,PDF was cut immediately before the xref table
+jpeg_eoi_missing,sample_07,jpeg,jpeg_eoi_missing_sample_07.img,sample_07.jpeg,85,2183,0f479cdaacc4d86625e1d618ee28ab91076ab42040e8018c55547c87fb45d537,2181,Only the final JPEG EOI marker was removed
+jpeg_mid_truncated,sample_07,jpeg,jpeg_mid_truncated_sample_07.img,sample_07.jpeg,87,2183,0f479cdaacc4d86625e1d618ee28ab91076ab42040e8018c55547c87fb45d537,1309,JPEG was cut at 60% of its original byte length
+pdf_eof_missing,sample_07,pdf,pdf_eof_missing_sample_07.img,sample_07.pdf,84,469,0fc6dd3e9eb0312eee870ed02a04ce42d914403223c01c9c266974128ca3cc09,463,PDF %%EOF marker and trailing bytes were removed
+pdf_xref_missing,sample_07,pdf,pdf_xref_missing_sample_07.img,sample_07.pdf,85,469,0fc6dd3e9eb0312eee870ed02a04ce42d914403223c01c9c266974128ca3cc09,293,PDF was cut immediately before the xref table
+jpeg_eoi_missing,sample_08,jpeg,jpeg_eoi_missing_sample_08.img,sample_08.jpeg,85,2268,2c3e673cfca76acb22b447fe9a991f6ecac772ab48428ebbc5bf5f0cdeebaa92,2266,Only the final JPEG EOI marker was removed
+jpeg_mid_truncated,sample_08,jpeg,jpeg_mid_truncated_sample_08.img,sample_08.jpeg,87,2268,2c3e673cfca76acb22b447fe9a991f6ecac772ab48428ebbc5bf5f0cdeebaa92,1360,JPEG was cut at 60% of its original byte length
+pdf_eof_missing,sample_08,pdf,pdf_eof_missing_sample_08.img,sample_08.pdf,84,469,a1b07e0331c5e2ca49757f325d75558d494133cb37e70af31c1eb34774b0c6c8,463,PDF %%EOF marker and trailing bytes were removed
+pdf_xref_missing,sample_08,pdf,pdf_xref_missing_sample_08.img,sample_08.pdf,85,469,a1b07e0331c5e2ca49757f325d75558d494133cb37e70af31c1eb34774b0c6c8,293,PDF was cut immediately before the xref table
+jpeg_eoi_missing,sample_09,jpeg,jpeg_eoi_missing_sample_09.img,sample_09.jpeg,85,3267,d50a7a0246d213071a753f84c318edfd557cbaa64eb5d4369695c8c4a845a602,3265,Only the final JPEG EOI marker was removed
+jpeg_mid_truncated,sample_09,jpeg,jpeg_mid_truncated_sample_09.img,sample_09.jpeg,87,3267,d50a7a0246d213071a753f84c318edfd557cbaa64eb5d4369695c8c4a845a602,1960,JPEG was cut at 60% of its original byte length
+pdf_eof_missing,sample_09,pdf,pdf_eof_missing_sample_09.img,sample_09.pdf,84,469,809d91a6fc6562001854d257485b56727959c2deb62ac3cb5be3400b81afa604,463,PDF %%EOF marker and trailing bytes were removed
+pdf_xref_missing,sample_09,pdf,pdf_xref_missing_sample_09.img,sample_09.pdf,85,469,809d91a6fc6562001854d257485b56727959c2deb62ac3cb5be3400b81afa604,293,PDF was cut immediately before the xref table
+jpeg_eoi_missing,sample_10,jpeg,jpeg_eoi_missing_sample_10.img,sample_10.jpeg,85,3731,91121146f72ed89de275255093db57b22518a0045eac757f9386ae6cf59aac13,3729,Only the final JPEG EOI marker was removed
+jpeg_mid_truncated,sample_10,jpeg,jpeg_mid_truncated_sample_10.img,sample_10.jpeg,87,3731,91121146f72ed89de275255093db57b22518a0045eac757f9386ae6cf59aac13,2238,JPEG was cut at 60% of its original byte length
+pdf_eof_missing,sample_10,pdf,pdf_eof_missing_sample_10.img,sample_10.pdf,84,469,64eded43f1da8aea2019ed83f1941967b05413089bbdcb1b3f5da76790d29f59,463,PDF %%EOF marker and trailing bytes were removed
+pdf_xref_missing,sample_10,pdf,pdf_xref_missing_sample_10.img,sample_10.pdf,85,469,64eded43f1da8aea2019ed83f1941967b05413089bbdcb1b3f5da76790d29f59,293,PDF was cut immediately before the xref table

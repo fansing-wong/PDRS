@@ -1,0 +1,4 @@
+raw_image_size_mib,elapsed_seconds,visited_nodes,unique_offsets_parsed,indexed_crc_chunks,idat_candidates,zlib_rejected_branches,incomplete_zlib_paths,pillow_checks,pillow_rejected_paths,exact_source_hash,pixels_equal_source
+1,1.009694,29397,11424,22,30115,719,14542,1,0,True,True
+16,2.858049,29397,11424,22,30115,719,14542,1,0,True,True
+64,16.155701,29397,11424,22,30115,719,14542,1,0,True,True

@@ -1,0 +1,2 @@
+filename,format,offset,end_offset_exclusive,size_bytes,complete_boundary,format_valid,validation_note,sha256
+png_00000000003b_0001.png,png,59,1232,1173,True,True,"PNG chunks, CRCs, zlib stream, and scanline lengths valid",b8c82bda0df6182e3d0384e794363a979fe77bbd4e1ff8ef6af6a9e9280a4bc4

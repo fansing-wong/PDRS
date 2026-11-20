@@ -1,0 +1,2 @@
+five_gap_samples,mean_v21_seconds,max_v21_seconds,mean_speedup_vs_v17,mean_unique_offsets_parsed,mean_visited_nodes,pillow_checks_total,all_exact_hashes,all_pixels_equal
+10,1.070219,1.459680,14.32,10289.0,29397.0,10,10,10

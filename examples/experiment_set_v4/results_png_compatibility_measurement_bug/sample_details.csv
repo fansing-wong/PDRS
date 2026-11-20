@@ -1,0 +1,11 @@
+variant,pillow_mode,dimensions,interlace_flag,candidate_found_at_expected_offset,pdrs_structure_valid,sha256_exact_match,pillow_decoded_recovery,decoded_pixels_match,validation_note,pillow_error
+rgb8_small,RGB,16x8,0,True,True,True,False,True,"PNG chunks, CRCs, zlib stream, and scanline lengths valid",
+rgba8,RGBA,21x13,0,True,True,True,False,True,"PNG chunks, CRCs, zlib stream, and scanline lengths valid",
+grayscale8,L,19x7,0,True,True,True,False,True,"PNG chunks, CRCs, zlib stream, and scanline lengths valid",
+grayscale1,1,21x9,0,True,True,True,False,True,"PNG chunks, CRCs, zlib stream, and scanline lengths valid",
+palette8,P,33x17,0,True,True,True,False,True,"PNG chunks, CRCs, zlib stream, and scanline lengths valid",
+grayscale16,I;16,22x10,0,True,True,True,False,True,"PNG chunks, CRCs, zlib stream, and scanline lengths valid",
+grayscale_alpha8,LA,13x11,0,True,True,True,False,True,"PNG chunks, CRCs, zlib stream, and scanline lengths valid",
+rgb8_large_low_compression,RGB,128x64,0,True,True,True,False,True,"PNG chunks, CRCs, zlib stream, and scanline lengths valid",
+rgba8_large_high_compression,RGBA,96x64,0,True,True,True,False,True,"PNG chunks, CRCs, zlib stream, and scanline lengths valid",
+rgb8_adam7_requested,RGB,32x32,0,True,True,True,False,True,"PNG chunks, CRCs, zlib stream, and scanline lengths valid",

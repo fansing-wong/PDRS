@@ -1,0 +1,3 @@
+scenario,independent_samples,candidate_count,true_header_candidates,false_positive_candidates,structure_valid_candidates,structure_valid_candidate_precision,false_positive_rejection_rate,exact_sha256_matches,mean_runtime_seconds
+crc_consistent_invalid_idat,10,10,0,10,10,0.0000,0.0000,0,0.539438
+valid_control,10,10,10,0,10,1.0000,N/A,10,0.529342

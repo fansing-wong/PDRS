@@ -1,0 +1,2 @@
+valid_samples,candidate_detections,pdrs_structure_valid,sha256_exact_matches,pillow_decoded_recoveries,decoded_pixel_matches,variants_rejected_by_pdrs
+10,10,10,10,0,10,0

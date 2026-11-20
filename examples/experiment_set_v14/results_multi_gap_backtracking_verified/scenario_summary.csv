@@ -1,0 +1,4 @@
+scenario,samples,gap1_bytes,gap2_bytes,decoys_gap1,decoys_gap2,pdrs_format_valid,pdrs_exact_source_hashes,greedy_exact_source_hashes,greedy_pillow_decoded,validated_exact_source_hashes,validated_pillow_decoded,validated_pixels_equal_source
+baseline,10,0,0,0,0,10,10,10,10,10,10,10
+two_gaps_simple,10,64,128,0,0,0,0,10,10,10,10,10
+two_gaps_with_decoys,10,64,128,1,2,0,0,0,0,10,10,10

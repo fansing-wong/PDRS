@@ -1,0 +1,41 @@
+scenario,sample_id,format,target_present,candidate_found_at_expected_offset,true_header_detection,false_positive,sha256_exact_match,independent_parser_accepted,content_equivalent,parser_error
+jpeg_valid,sample_01,jpeg,True,True,True,False,True,True,True,
+jpeg_decoy,sample_01,jpeg,False,True,False,True,False,False,False,OSError: Truncated File Read
+pdf_valid,sample_01,pdf,True,True,True,False,True,True,True,
+pdf_decoy,sample_01,pdf,False,True,False,True,False,False,False,PdfReadError: startxref not found
+jpeg_valid,sample_02,jpeg,True,True,True,False,True,True,True,
+jpeg_decoy,sample_02,jpeg,False,True,False,True,False,False,False,OSError: Truncated File Read
+pdf_valid,sample_02,pdf,True,True,True,False,True,True,True,
+pdf_decoy,sample_02,pdf,False,True,False,True,False,False,False,PdfReadError: startxref not found
+jpeg_valid,sample_03,jpeg,True,True,True,False,True,True,True,
+jpeg_decoy,sample_03,jpeg,False,True,False,True,False,False,False,OSError: Truncated File Read
+pdf_valid,sample_03,pdf,True,True,True,False,True,True,True,
+pdf_decoy,sample_03,pdf,False,True,False,True,False,False,False,PdfReadError: startxref not found
+jpeg_valid,sample_04,jpeg,True,True,True,False,True,True,True,
+jpeg_decoy,sample_04,jpeg,False,True,False,True,False,False,False,OSError: Truncated File Read
+pdf_valid,sample_04,pdf,True,True,True,False,True,True,True,
+pdf_decoy,sample_04,pdf,False,True,False,True,False,False,False,PdfReadError: startxref not found
+jpeg_valid,sample_05,jpeg,True,True,True,False,True,True,True,
+jpeg_decoy,sample_05,jpeg,False,True,False,True,False,False,False,OSError: Truncated File Read
+pdf_valid,sample_05,pdf,True,True,True,False,True,True,True,
+pdf_decoy,sample_05,pdf,False,True,False,True,False,False,False,PdfReadError: startxref not found
+jpeg_valid,sample_06,jpeg,True,True,True,False,True,True,True,
+jpeg_decoy,sample_06,jpeg,False,True,False,True,False,False,False,OSError: Truncated File Read
+pdf_valid,sample_06,pdf,True,True,True,False,True,True,True,
+pdf_decoy,sample_06,pdf,False,True,False,True,False,False,False,PdfReadError: startxref not found
+jpeg_valid,sample_07,jpeg,True,True,True,False,True,True,True,
+jpeg_decoy,sample_07,jpeg,False,True,False,True,False,False,False,OSError: Truncated File Read
+pdf_valid,sample_07,pdf,True,True,True,False,True,True,True,
+pdf_decoy,sample_07,pdf,False,True,False,True,False,False,False,PdfReadError: startxref not found
+jpeg_valid,sample_08,jpeg,True,True,True,False,True,True,True,
+jpeg_decoy,sample_08,jpeg,False,True,False,True,False,False,False,OSError: Truncated File Read
+pdf_valid,sample_08,pdf,True,True,True,False,True,True,True,
+pdf_decoy,sample_08,pdf,False,True,False,True,False,False,False,PdfReadError: startxref not found
+jpeg_valid,sample_09,jpeg,True,True,True,False,True,True,True,
+jpeg_decoy,sample_09,jpeg,False,True,False,True,False,False,False,OSError: Truncated File Read
+pdf_valid,sample_09,pdf,True,True,True,False,True,True,True,
+pdf_decoy,sample_09,pdf,False,True,False,True,False,False,False,PdfReadError: startxref not found
+jpeg_valid,sample_10,jpeg,True,True,True,False,True,True,True,
+jpeg_decoy,sample_10,jpeg,False,True,False,True,False,False,False,OSError: Truncated File Read
+pdf_valid,sample_10,pdf,True,True,True,False,True,True,True,
+pdf_decoy,sample_10,pdf,False,True,False,True,False,False,False,PdfReadError: startxref not found
