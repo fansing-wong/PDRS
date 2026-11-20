@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.0 — Interrupted FAT32 chain guard
+
+- Distinguishes cleared FAT links from a premature end-of-chain marker.
+- Skips deleted entries when the visible FAT chain ends before the directory entry's declared file size.
+- Skips invalid or reserved FAT links; only cleared links retain the contiguous-data fallback.
+- Adds a synthetic interrupted-chain case with a decoy cluster and Ground Truth absence record.
+
 ## 0.13.0 — Visible FAT32 fragmentation guard
 
 - Checks the FAT links needed for each deleted entry's declared size before contiguous extraction.

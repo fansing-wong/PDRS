@@ -237,7 +237,7 @@ class Fat32RecoveryTests(unittest.TestCase):
             row = result.rows[0]
             self.assertEqual(row["offset"], expected_offset)
             self.assertEqual(row["format"], "txt")
-            self.assertEqual(row["data_layout_status"], "fat_chain_unavailable")
+            self.assertEqual(row["data_layout_status"], "fat_chain_cleared")
             self.assertTrue(row["filename"].endswith(".txt"))
             self.assertIsNone(row["format_valid"])
             self.assertEqual((output / str(row["filename"])).read_bytes(), payload)
@@ -265,6 +265,25 @@ class Fat32RecoveryTests(unittest.TestCase):
             self.assertEqual(result.rows, [])
             self.assertEqual(list(output.iterdir()), [])
             self.assertTrue(any("non-contiguous FAT link" in item for item in result.warnings))
+
+    def test_skips_deleted_file_when_fat_chain_ends_before_declared_size(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_interrupted_deleted.img"
+            make_deleted_fat32_image(image)
+            fat_offset = SECTOR_SIZE + FAT_START_SECTOR * SECTOR_SIZE
+            with image.open("r+b") as handle:
+                # The directory entry declares more than one cluster, but the FAT
+                # marks the first cluster as the end of the chain.
+                handle.seek(fat_offset + FILE_CLUSTER * 4)
+                handle.write(struct.pack("<I", 0x0FFFFFFF))
+
+            output = root / "recovered"
+            result = recover_deleted_fat32(image, output)
+
+            self.assertEqual(result.rows, [])
+            self.assertEqual(list(output.iterdir()), [])
+            self.assertTrue(any("end marker before the declared file size" in item for item in result.warnings))
 
     def test_recovers_deleted_short_entry_in_active_subdirectory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

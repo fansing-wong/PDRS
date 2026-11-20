@@ -66,9 +66,9 @@ def _fat_data_layout(
 ) -> str:
     """Classify only the FAT links needed to read a deleted file's declared size.
 
-    A visible non-contiguous link is enough to refuse contiguous extraction. Missing
-    or cleared links do not prove fragmentation, so those retain the explicitly
-    labelled contiguous-data assumption.
+    A visible non-contiguous link is enough to refuse contiguous extraction. Cleared
+    free entries retain the explicit contiguous-data assumption; other malformed
+    links are rejected.
     """
     if required_clusters <= 1:
         return "single_cluster"
@@ -77,9 +77,15 @@ def _fat_data_layout(
         try:
             next_cluster = _fat_entry(image, fat_start, fat_bytes, current)
         except ValueError:
-            return "fat_chain_unavailable"
+            return "invalid_fat_chain_skipped"
+        if next_cluster in (0, 1):
+            return "fat_chain_cleared"
+        if next_cluster >= FAT32_EOC_MIN:
+            return "truncated_fat_chain_skipped"
+        if next_cluster == FAT32_BAD_CLUSTER or 0x0FFFFFF0 <= next_cluster < FAT32_EOC_MIN:
+            return "invalid_fat_chain_skipped"
         if next_cluster < 2 or next_cluster >= cluster_count + 2:
-            return "fat_chain_unavailable"
+            return "invalid_fat_chain_skipped"
         if next_cluster != current + 1:
             return "fragmented_chain_skipped"
         current = next_cluster
@@ -467,10 +473,19 @@ def _recover_volume(
                 required_clusters=required_clusters,
                 cluster_count=geometry["cluster_count"],
             )
-            if data_layout_status == "fragmented_chain_skipped":
+            if data_layout_status in {
+                "fragmented_chain_skipped",
+                "truncated_fat_chain_skipped",
+                "invalid_fat_chain_skipped",
+            }:
+                reason = {
+                    "fragmented_chain_skipped": "a visible non-contiguous FAT link",
+                    "truncated_fat_chain_skipped": "a FAT end marker before the declared file size",
+                    "invalid_fat_chain_skipped": "an invalid FAT link",
+                }[data_layout_status]
                 _add_warning(
                     warnings,
-                    f"Deleted entry at {entry_offset} has a visible non-contiguous FAT link; skipped instead of reading the wrong contiguous range.",
+                    f"Deleted entry at {entry_offset} has {reason}; skipped instead of assuming a contiguous range.",
                 )
                 continue
             data_offset = geometry["data_start"] + (first_cluster - 2) * cluster_size
@@ -506,6 +521,17 @@ def _recover_volume(
         finally:
             view.release()
         total_recovered_bytes += file_size
+        layout_note = {
+            "zero_length": "zero-length file; no data bytes were read",
+            "single_cluster": "single-cluster file",
+            "contiguous_fat_links": "FAT links for the declared size are contiguous",
+            "fat_chain_cleared": "FAT links are cleared; contiguous storage was assumed",
+        }[data_layout_status]
+        lfn_note = (
+            "; reconstructed LFN checksum cannot be verified because the short-name first byte was erased"
+            if long_name
+            else ""
+        )
         rows.append({
             "filename": filename,
             "format": extension[1:],
@@ -515,10 +541,7 @@ def _recover_volume(
             "complete_boundary": True,
             "format_valid": None,
             "validation_note": (
-                "Experimental FAT32 deleted short entry; file data was assumed contiguous and not format-validated; "
-                "reconstructed LFN checksum cannot be verified because the short-name first byte was erased"
-                if long_name
-                else "Experimental FAT32 deleted short entry; file data was assumed contiguous and not format-validated"
+                f"Experimental FAT32 deleted short entry; {layout_note}; file format not validated{lfn_note}"
             ),
             "sha256": digest,
             "partition_number": partition_number,
@@ -529,9 +552,7 @@ def _recover_volume(
             "long_filename_status": long_name_status,
             "first_cluster": first_cluster,
             "data_layout_status": data_layout_status,
-            "recovery_assumption": (
-                "active directory chain; contiguous file data; deleted short-alias first byte unavailable"
-            ),
+            "recovery_assumption": f"active directory chain; {layout_note}{lfn_note}",
         })
     return deleted_seen, warnings, scanned_directory_count, total_directory_bytes
 

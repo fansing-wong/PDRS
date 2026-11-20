@@ -413,7 +413,7 @@ class PDRSApp:
             "实验性 FAT32 恢复",
             "将只读检查 raw 镜像中 FAT32 根目录及仍可访问的子目录。\n\n"
             "仅尝试短文件名项及相邻 LFN 名称；短名首字符丢失，LFN 校验和无法完整核验。\n"
-            "可见非连续 FAT 链会跳过；FAT 链已清空时仍假定数据连续。不进入已删除目录、不重组碎片，也不保证文件内容有效。\n"
+            "可见碎片链、提前结束或无效 FAT 链会跳过；FAT 链已清空时仍假定数据连续。不进入已删除目录、不重组碎片，也不保证文件内容有效。\n"
             "请只对自己制作或获准检查的镜像副本操作。继续吗？",
             parent=self.root,
         )
@@ -428,7 +428,7 @@ class PDRSApp:
         self.result_info.set("FAT32 恢复进行中…")
         self.summary_info.set("")
         self.evaluation_info.set("")
-        self.details.set("实验性 FAT32 恢复扫描删除短文件名项并尝试重建相邻 LFN；FAT 链缺失时假定文件连续，可见非连续链会跳过。")
+        self.details.set("实验性 FAT32 恢复扫描删除短文件名项并尝试重建相邻 LFN；FAT 链缺失时假定文件连续，可见碎片链、提前结束或无效链会跳过。")
         self._clear_results()
         self._set_busy(True)
         self.status.set("正在只读检查 FAT32 目录…")
@@ -678,7 +678,7 @@ class PDRSApp:
             )
             if evaluation is None:
                 self.evaluation_info.set(
-                    "扫描 8.3 删除项并尝试重建 LFN；可见碎片链已跳过，清空链仍按连续簇假设，短名校验和不完整，格式未验证。"
+                    "扫描 8.3 删除项并尝试重建 LFN；可见碎片、提前结束或无效 FAT 链已跳过，清空链仍按连续簇假设，短名校验和不完整，格式未验证。"
                 )
                 self.manifest_info.set(f"Manifest：{manifest}")
             else:
@@ -735,7 +735,7 @@ class PDRSApp:
             layout_status = row.get("data_layout_status")
             if layout_status == "fragmented_chain_skipped":
                 detail_lines.append("数据布局：检测到非连续 FAT 链，已跳过提取。")
-            elif layout_status == "fat_chain_unavailable":
+            elif layout_status == "fat_chain_cleared":
                 detail_lines.append("数据布局：FAT 链不可用；候选数据按连续簇假设提取。")
             elif layout_status == "contiguous_fat_links":
                 detail_lines.append("数据布局：所需 FAT 链接连续；这不等于文件内容校验通过。")

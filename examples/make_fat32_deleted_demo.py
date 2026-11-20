@@ -7,7 +7,7 @@ import hashlib
 import struct
 from pathlib import Path
 
-DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo_v13"
+DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo_v14"
 TOTAL_SECTORS = 70000
 SECTOR_SIZE = 512
 RESERVED_SECTORS = 32
@@ -22,6 +22,8 @@ DECOY_FILE_CLUSTER = 40
 FRAGMENT_FIRST_CLUSTER = 50
 FRAGMENT_SECOND_CLUSTER = 53
 CONTIGUOUS_DECOY_CLUSTER = 51
+INTERRUPTED_FIRST_CLUSTER = 60
+INTERRUPTED_DECOY_CLUSTER = 61
 
 
 def cluster_offset(cluster: int) -> int:
@@ -88,6 +90,7 @@ def main() -> None:
     active_payload = b"This intact active file must not be extracted as deleted.\r\n" * 6
     hidden_payload = b"This deleted file is inside a deleted directory and must be ignored.\r\n"
     fragmented_payload = bytes((index * 37 + 11) % 256 for index in range(700))
+    interrupted_payload = bytes((index * 19 + 7) % 256 for index in range(700))
     root_source.write_bytes(root_payload)
     nested_source.write_bytes(nested_payload)
 
@@ -130,6 +133,7 @@ def main() -> None:
         struct.pack_into("<I", fat, SUBDIRECTORY_CLUSTER * 4, 0x0FFFFFFF)
         struct.pack_into("<I", fat, FRAGMENT_FIRST_CLUSTER * 4, FRAGMENT_SECOND_CLUSTER)
         struct.pack_into("<I", fat, FRAGMENT_SECOND_CLUSTER * 4, 0x0FFFFFFF)
+        struct.pack_into("<I", fat, INTERRUPTED_FIRST_CLUSTER * 4, 0x0FFFFFFF)
         # FILE_CLUSTER remains free, reproducing the common post-delete FAT state.
         handle.seek(SECTOR_SIZE + RESERVED_SECTORS * SECTOR_SIZE)
         handle.write(fat)
@@ -180,6 +184,17 @@ def main() -> None:
         struct.pack_into("<I", fragmented_entry, 28, len(fragmented_payload))
         handle.write(fragmented_entry)
 
+        # This entry declares two clusters of data, but its surviving FAT chain
+        # ends after the first one. The adjacent cluster is unrelated decoy data.
+        interrupted_entry = bytearray(32)
+        interrupted_entry[0] = 0xE5
+        interrupted_entry[1:8] = b"NTRRUPT"
+        interrupted_entry[8:11] = b"BIN"
+        interrupted_entry[11] = 0x20
+        struct.pack_into("<H", interrupted_entry, 26, INTERRUPTED_FIRST_CLUSTER)
+        struct.pack_into("<I", interrupted_entry, 28, len(interrupted_payload))
+        handle.write(interrupted_entry)
+
         nested_deleted_entry = bytearray(32)
         nested_deleted_entry[0] = 0xE5
         nested_deleted_entry[1:8] = b"ESTSAMP"
@@ -227,6 +242,10 @@ def main() -> None:
         handle.write(fragmented_payload[SECTOR_SIZE:])
         handle.seek(cluster_offset(CONTIGUOUS_DECOY_CLUSTER))
         handle.write(b"CONTIGUOUS-DECOY-" * 40)
+        handle.seek(cluster_offset(INTERRUPTED_FIRST_CLUSTER))
+        handle.write(interrupted_payload[:SECTOR_SIZE])
+        handle.seek(cluster_offset(INTERRUPTED_DECOY_CLUSTER))
+        handle.write(interrupted_payload[SECTOR_SIZE:])
 
     truth_path = root / "ground_truth.csv"
     with truth_path.open("x", newline="", encoding="utf-8") as handle:
@@ -256,6 +275,13 @@ def main() -> None:
                 "target_present": "false",
                 "expected_offset": cluster_offset(FRAGMENT_FIRST_CLUSTER),
                 "expected_sha256": hashlib.sha256(fragmented_payload).hexdigest(),
+            },
+            {
+                "image_filename": image_path.name,
+                "source_filename": "interrupted_chain_control.bin",
+                "target_present": "false",
+                "expected_offset": cluster_offset(INTERRUPTED_FIRST_CLUSTER),
+                "expected_sha256": hashlib.sha256(interrupted_payload).hexdigest(),
             },
         ))
     print(f"Synthetic FAT32 image: {image_path}")
