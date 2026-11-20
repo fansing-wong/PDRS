@@ -1,14 +1,13 @@
-"""Generate a synthetic FAT32 image with one deleted root 8.3 file entry."""
+"""Generate synthetic FAT32 root, subdirectory, and deleted-directory controls."""
 from __future__ import annotations
 
+import argparse
 import csv
 import hashlib
 import struct
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo"
-IMAGE_DIR = ROOT / "images"
-SOURCE_DIR = ROOT / "sources"
+DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo"
 TOTAL_SECTORS = 70000
 SECTOR_SIZE = 512
 RESERVED_SECTORS = 32
@@ -16,22 +15,42 @@ SECTORS_PER_FAT = 550
 DATA_START_SECTOR = RESERVED_SECTORS + SECTORS_PER_FAT
 ROOT_CLUSTER = 2
 FILE_CLUSTER = 10
-IMAGE_OFFSET = SECTOR_SIZE + (DATA_START_SECTOR + FILE_CLUSTER - 2) * SECTOR_SIZE
+SUBDIRECTORY_CLUSTER = 12
+NESTED_FILE_CLUSTER = 20
+DELETED_DIRECTORY_CLUSTER = 30
+DECOY_FILE_CLUSTER = 40
+
+
+def cluster_offset(cluster: int) -> int:
+    return SECTOR_SIZE + (DATA_START_SECTOR + cluster - 2) * SECTOR_SIZE
 
 
 def main() -> None:
-    if ROOT.exists():
-        raise SystemExit(f"Refusing to overwrite existing demo set: {ROOT}")
-    IMAGE_DIR.mkdir(parents=True)
-    SOURCE_DIR.mkdir()
-    source_path = SOURCE_DIR / "deleted_sample.txt"
-    payload = (
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_ROOT)
+    root = parser.parse_args().output_dir.expanduser().resolve()
+    image_dir = root / "images"
+    source_dir = root / "sources"
+    if root.exists():
+        raise SystemExit(f"Refusing to overwrite existing demo set: {root}")
+    image_dir.mkdir(parents=True)
+    source_dir.mkdir()
+    root_source = source_dir / "deleted_root_sample.txt"
+    nested_source = source_dir / "deleted_subdirectory_sample.txt"
+    root_payload = (
         b"Synthetic FAT32 deleted-file sample for PDRS.\r\n"
-        b"Only the root 8.3 directory entry is marked deleted; data is contiguous.\r\n"
-    ) * 12
-    source_path.write_bytes(payload)
+        b"This entry lives in the root directory and its data is contiguous.\r\n"
+    ) * 6
+    nested_payload = (
+        b"This deleted entry is in an active FAT32 subdirectory.\r\n"
+        b"The original directory remains allocated; file data is contiguous.\r\n"
+    ) * 10
+    active_payload = b"This intact active file must not be extracted as deleted.\r\n" * 6
+    hidden_payload = b"This deleted file is inside a deleted directory and must be ignored.\r\n"
+    root_source.write_bytes(root_payload)
+    nested_source.write_bytes(nested_payload)
 
-    image_path = IMAGE_DIR / "fat32_deleted_root.img"
+    image_path = image_dir / "fat32_deleted_root.img"
     with image_path.open("wb") as handle:
         handle.truncate((TOTAL_SECTORS + 1) * SECTOR_SIZE)
     with image_path.open("r+b") as handle:
@@ -66,6 +85,8 @@ def main() -> None:
         struct.pack_into("<I", fat, 0, 0x0FFFFFF8)
         struct.pack_into("<I", fat, 4, 0x0FFFFFFF)
         struct.pack_into("<I", fat, ROOT_CLUSTER * 4, 0x0FFFFFFF)
+        struct.pack_into("<I", fat, (FILE_CLUSTER + 4) * 4, 0x0FFFFFFF)
+        struct.pack_into("<I", fat, SUBDIRECTORY_CLUSTER * 4, 0x0FFFFFFF)
         # FILE_CLUSTER remains free, reproducing the common post-delete FAT state.
         handle.seek(SECTOR_SIZE + RESERVED_SECTORS * SECTOR_SIZE)
         handle.write(fat)
@@ -76,7 +97,7 @@ def main() -> None:
         deleted_entry[8:11] = b"TXT"
         deleted_entry[11] = 0x20
         struct.pack_into("<H", deleted_entry, 26, FILE_CLUSTER)
-        struct.pack_into("<I", deleted_entry, 28, len(payload))
+        struct.pack_into("<I", deleted_entry, 28, len(root_payload))
         root_directory_offset = SECTOR_SIZE + DATA_START_SECTOR * SECTOR_SIZE
         handle.seek(root_directory_offset)
         handle.write(deleted_entry)
@@ -87,30 +108,93 @@ def main() -> None:
         active_entry[8:11] = b"TXT"
         active_entry[11] = 0x20
         struct.pack_into("<H", active_entry, 26, FILE_CLUSTER + 4)
-        struct.pack_into("<I", active_entry, 28, len(payload))
+        struct.pack_into("<I", active_entry, 28, len(active_payload))
         handle.write(active_entry)
 
-        handle.seek(IMAGE_OFFSET)
-        handle.write(payload)
+        active_subdirectory = bytearray(32)
+        active_subdirectory[:8] = b"SUBDIR  "
+        active_subdirectory[11] = 0x10
+        struct.pack_into("<H", active_subdirectory, 26, SUBDIRECTORY_CLUSTER)
+        handle.write(active_subdirectory)
 
-    truth_path = ROOT / "ground_truth.csv"
+        deleted_directory = bytearray(32)
+        deleted_directory[0] = 0xE5
+        deleted_directory[1:8] = b"ELDIR  "
+        deleted_directory[11] = 0x10
+        struct.pack_into("<H", deleted_directory, 26, DELETED_DIRECTORY_CLUSTER)
+        handle.write(deleted_directory)
+
+        nested_deleted_entry = bytearray(32)
+        nested_deleted_entry[0] = 0xE5
+        nested_deleted_entry[1:8] = b"ESTNEST"
+        nested_deleted_entry[8:11] = b"TXT"
+        nested_deleted_entry[11] = 0x20
+        struct.pack_into("<H", nested_deleted_entry, 26, NESTED_FILE_CLUSTER)
+        struct.pack_into("<I", nested_deleted_entry, 28, len(nested_payload))
+        handle.seek(cluster_offset(SUBDIRECTORY_CLUSTER))
+        handle.write(nested_deleted_entry)
+
+        dot_entry = bytearray(32)
+        dot_entry[:11] = b".          "
+        dot_entry[11] = 0x10
+        struct.pack_into("<H", dot_entry, 26, SUBDIRECTORY_CLUSTER)
+        dotdot_entry = bytearray(32)
+        dotdot_entry[:11] = b"..         "
+        dotdot_entry[11] = 0x10
+        struct.pack_into("<H", dotdot_entry, 26, ROOT_CLUSTER)
+        handle.write(dot_entry)
+        handle.write(dotdot_entry)
+
+        hidden_deleted_entry = bytearray(32)
+        hidden_deleted_entry[0] = 0xE5
+        hidden_deleted_entry[1:8] = b"IDDEN  "
+        hidden_deleted_entry[8:11] = b"TXT"
+        hidden_deleted_entry[11] = 0x20
+        struct.pack_into("<H", hidden_deleted_entry, 26, DECOY_FILE_CLUSTER)
+        struct.pack_into("<I", hidden_deleted_entry, 28, len(hidden_payload))
+        handle.seek(cluster_offset(DELETED_DIRECTORY_CLUSTER))
+        handle.write(hidden_deleted_entry)
+
+        handle.seek(cluster_offset(FILE_CLUSTER))
+        handle.write(root_payload)
+        handle.seek(cluster_offset(FILE_CLUSTER + 4))
+        handle.write(active_payload)
+        handle.seek(cluster_offset(NESTED_FILE_CLUSTER))
+        handle.write(nested_payload)
+        handle.seek(cluster_offset(DECOY_FILE_CLUSTER))
+        handle.write(hidden_payload)
+
+    truth_path = root / "ground_truth.csv"
     with truth_path.open("x", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle,
             fieldnames=("image_filename", "source_filename", "target_present", "expected_offset", "expected_sha256"),
         )
         writer.writeheader()
-        writer.writerow({
-            "image_filename": image_path.name,
-            "source_filename": source_path.name,
-            "target_present": "true",
-            "expected_offset": IMAGE_OFFSET,
-            "expected_sha256": hashlib.sha256(payload).hexdigest(),
-        })
+        writer.writerows((
+            {
+                "image_filename": image_path.name,
+                "source_filename": root_source.name,
+                "target_present": "true",
+                "expected_offset": cluster_offset(FILE_CLUSTER),
+                "expected_sha256": hashlib.sha256(root_payload).hexdigest(),
+            },
+            {
+                "image_filename": image_path.name,
+                "source_filename": nested_source.name,
+                "target_present": "true",
+                "expected_offset": cluster_offset(NESTED_FILE_CLUSTER),
+                "expected_sha256": hashlib.sha256(nested_payload).hexdigest(),
+            },
+        ))
     print(f"Synthetic FAT32 image: {image_path}")
-    print(f"Source file:          {source_path}")
+    print(f"Root source file:     {root_source}")
+    print(f"Nested source file:   {nested_source}")
     print(f"Ground truth:         {truth_path}")
-    print("This generated image tests a deleted root 8.3 entry and contiguous data; it is not a physical disk.")
+    print(
+        "The image tests root/subdirectory deletion, ignores active-file and deleted-directory controls, "
+        "and is not a physical disk."
+    )
 
 
 if __name__ == "__main__":

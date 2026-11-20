@@ -228,7 +228,7 @@ class PDRSApp:
 
         ttk.Label(
             page,
-            text="支持 BMP、JPEG、PNG、PDF、SQLite 连续雕刻；FAT32误删恢复仅实验性支持根目录8.3项和连续数据。不会访问物理磁盘或重组碎片文件。",
+            text="支持 BMP、JPEG、PNG、PDF、SQLite 连续雕刻；FAT32误删恢复实验性扫描根目录和活动子目录的8.3项。不会访问物理磁盘或重组碎片文件。",
             style="SubTitle.TLabel",
             wraplength=980,
         ).grid(row=4, column=0, sticky="w", pady=(12, 0))
@@ -411,8 +411,8 @@ class PDRSApp:
 
         confirmed = messagebox.askyesno(
             "实验性 FAT32 恢复",
-            "将只读检查 raw 镜像中的 FAT32 根目录删除短文件名项。\n\n"
-            "仅尝试连续簇数据；不恢复子目录，不重组碎片，也不保证文件内容有效。\n"
+            "将只读检查 raw 镜像中 FAT32 根目录及仍可访问的子目录。\n\n"
+            "仅尝试短文件名项和连续簇数据；不恢复已删除目录，不重组碎片，也不保证文件内容有效。\n"
             "请只对自己制作或获准检查的镜像副本操作。继续吗？",
             parent=self.root,
         )
@@ -427,10 +427,10 @@ class PDRSApp:
         self.result_info.set("FAT32 恢复进行中…")
         self.summary_info.set("")
         self.evaluation_info.set("")
-        self.details.set("实验性 FAT32 恢复仅支持根目录删除短文件名项，文件内容假定连续存放。")
+        self.details.set("实验性 FAT32 恢复扫描根目录和活动子目录中的删除短文件名项，文件内容假定连续存放。")
         self._clear_results()
         self._set_busy(True)
-        self.status.set("正在只读检查 FAT32 根目录…")
+        self.status.set("正在只读检查 FAT32 目录…")
         threading.Thread(
             target=self._fat32_recovery_worker,
             args=(source, output, ground_truth_records),
@@ -670,12 +670,14 @@ class PDRSApp:
                 )
             self.result_info.set("实验性 FAT32 恢复完成")
             self.summary_info.set(
+                f"扫描目录 {result.directories_scanned}    "
+                f"读取 {result.directory_bytes_scanned / (1024 * 1024):.1f} MiB    "
                 f"删除短文件名项 {result.deleted_entries_seen}    "
                 f"提取候选 {len(result.rows)}    警告 {len(result.warnings)}"
             )
             if evaluation is None:
                 self.evaluation_info.set(
-                    "仅扫描 FAT32 根目录 8.3 删除项；提取数据按连续簇假设，格式未验证。"
+                    "扫描根目录和活动子目录的 8.3 删除项；提取数据按连续簇假设，格式未验证。"
                 )
                 self.manifest_info.set(f"Manifest：{manifest}")
             else:
@@ -697,7 +699,7 @@ class PDRSApp:
             elif result.warnings:
                 self.details.set("未提取文件。查看输出目录中的 recovery_warnings.txt。")
             else:
-                self.details.set("没有检测到可提取的 FAT32 根目录删除短文件项。")
+                self.details.set("没有检测到可提取的 FAT32 删除短文件项。")
         elif event == "error":
             self.status.set("扫描失败")
             self.result_info.set("未生成完整扫描结果")
@@ -723,10 +725,14 @@ class PDRSApp:
             self.copy_sha_button.configure(state="disabled")
             return
         self.copy_sha_button.configure(state="normal")
-        self.details.set(
-            f"文件：{row['filename']}    SHA-256：{row['sha256']}\n"
-            f"校验说明：{row['validation_note']}"
-        )
+        detail_lines = [f"文件：{row['filename']}    SHA-256：{row['sha256']}"]
+        if "directory_depth" in row:
+            detail_lines.append(
+                f"目录深度：{row['directory_depth']}    目录簇：{row['directory_cluster']}    "
+                f"目录项偏移：{row['directory_entry_offset']}"
+            )
+        detail_lines.append(f"校验说明：{row['validation_note']}")
+        self.details.set("\n".join(detail_lines))
         if self._has_ground_truth_evaluation:
             match_status = self._ground_truth_status.get(
                 str(row["filename"]), "未匹配到 ground truth 源哈希（可能是误报）"

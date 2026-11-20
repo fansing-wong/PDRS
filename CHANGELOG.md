@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.0 — FAT32 active-subdirectory scan
+
+- Extended deleted short-entry scans from the root directory into still-active subdirectories.
+- Added cycle/overlap detection and limits for depth, directory count, directory bytes, and warning volume.
+- Skips candidates overlapping an active directory cluster; skips all extraction when traversal is incomplete.
+- Added directory depth/cluster details and scan-size statistics to CLI and GUI results.
+- Expanded the synthetic Ground Truth demo with root, subdirectory, active-file, and deleted-directory controls.
+- Deleted directories, long filenames, fragmented data, and format validation remain unsupported.
+
 ## 0.10.0 — Experimental FAT32 deleted-entry recovery
 
 - Added `recover-fat32-deleted` for FAT32 root-directory deleted 8.3 entries in regular raw image files.

@@ -51,3 +51,4 @@ desktop.ini
 /examples/recovery_scenario_set_v1/
 /examples/ext4_structure_demo/*.img
 /examples/fat32_deleted_demo/
+/examples/fat32_deleted_demo_v11/

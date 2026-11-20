@@ -14,7 +14,7 @@ The current PDRS prototype carves contiguous BMP, JPEG, PNG, PDF, and SQLite mai
 
 ## Scope and hypothesis
 
-Use only synthetic raw images generated for the experiment. The prototype reads the image in read-only mode and writes results to a separate directory. The regular carving command does not recover filesystem deletion records, contact physical devices, or reconstruct fragmented files. A separate experimental command handles only deleted FAT32 root-directory short entries and assumes contiguous file data. SQLite WAL replay and deleted-row recovery remain outside scope.
+Use only synthetic raw images generated for the experiment. The prototype reads the image in read-only mode and writes results to a separate directory. The regular carving command does not recover filesystem deletion records, contact physical devices, or reconstruct fragmented files. A separate experimental command handles deleted FAT32 short entries in the root and still-active subdirectories, and assumes contiguous file data. SQLite WAL replay and deleted-row recovery remain outside scope.
 
 Hypothesis: files stored contiguously with intact headers and valid format terminators will be recovered byte-for-byte more often than truncated files or files whose format markers occur in unrelated payload data. Format-aware boundary rules should reduce false positives compared with header-only extraction.
 
@@ -74,6 +74,10 @@ Use SHA-256 equality to establish exact recovery. File-open success is a separat
 When reporting platform compatibility, specify the filesystem and encryption state (for example, NTFS, ext4, F2FS, or APFS), not just Windows, Android, Linux, or Apple. See `docs/RECOVERY_ROADMAP.md` for the current capability matrix and planned milestones.
 
 
-## FAT32 deleted root-entry experiment
+## FAT32 deleted-entry experiments
 
-The 0.10 pilot builds one synthetic FAT32 volume with a deleted 8.3 root-directory entry and a known source file. `recover-fat32-deleted IMAGE OUTPUT` reads the first FAT and root-directory cluster chain from a regular image file, then extracts files whose deleted short entries carry a first cluster and size. It does not recover the lost leading filename character, process LFN entries or subdirectories, follow fragmented chains, or validate file formats. Compare `manifest.csv` SHA-256 and data offset against the generated `ground_truth.csv`. Do not generalize a one-sample synthetic result to real FAT32 devices.
+The 0.10 pilot used a synthetic FAT32 volume with one deleted 8.3 root-directory entry. Version 0.11 adds a root entry plus a deleted entry inside an active subdirectory, an intact-file control, and a deleted-directory control. `recover-fat32-deleted IMAGE OUTPUT` follows the first FAT to scan the root and active subdirectory chains in a regular image file. It extracts candidates using the directory-entry size and first cluster, assuming the file data is contiguous.
+
+The demo writes two known source files and records expected SHA-256 hashes and offsets in Ground Truth. It also puts a deleted file inside a deleted directory; that file should not be found because its parent directory is no longer reachable through an active entry. Compare the recovered candidate count, hashes, and offsets with the generated Ground Truth. These controlled results do not generalize to real devices.
+
+The scanner does not restore the lost leading filename character or LFN, enter deleted directories, reconstruct fragmented data, or validate recovered formats. Traversal is bounded to 32 directory levels, 4,096 directory starts, 256 MiB of directory bytes, and 64 MiB per individual directory chain. If traversal reaches a safety limit or an active directory chain is malformed, extraction is skipped for that volume. A candidate whose assumed contiguous range overlaps a scanned active directory cluster is also skipped.

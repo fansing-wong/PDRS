@@ -1,20 +1,26 @@
-"""Experimental recovery of deleted FAT32 root-directory short entries."""
+"""Experimental recovery of deleted FAT32 short entries in active directories."""
 from __future__ import annotations
 
 import hashlib
 import mmap
 import stat
 import struct
+from bisect import bisect_left
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from pdrs.structure import ImageStructure, Partition, VolumeInfo, inspect_image
 
-MAX_ROOT_DIRECTORY_BYTES = 64 * 1024 * 1024
+MAX_DIRECTORY_CHAIN_BYTES = 64 * 1024 * 1024
+MAX_TOTAL_DIRECTORY_BYTES = 256 * 1024 * 1024
+MAX_DIRECTORY_COUNT = 4096
+MAX_DIRECTORY_DEPTH = 32
 MAX_RECOVERED_FILE_BYTES = 256 * 1024 * 1024
 MAX_TOTAL_RECOVERED_BYTES = 1024 * 1024 * 1024
 MAX_CANDIDATES = 10000
+MAX_WARNINGS = 100
 FAT32_EOC_MIN = 0x0FFFFFF8
 FAT32_BAD_CLUSTER = 0x0FFFFFF7
 
@@ -24,6 +30,8 @@ class Fat32RecoveryResult:
     rows: list[dict[str, Any]]
     warnings: list[str]
     deleted_entries_seen: int
+    directories_scanned: int
+    directory_bytes_scanned: int
 
 
 def _partition_for(volume: VolumeInfo, structure: ImageStructure) -> Partition | None:
@@ -42,34 +50,51 @@ def _fat_entry(image: mmap.mmap, fat_start: int, fat_bytes: int, cluster: int) -
     return struct.unpack_from("<I", image, entry_offset)[0] & 0x0FFFFFFF
 
 
-def _root_chain(
+def _directory_chain(
     image: mmap.mmap,
     *,
     fat_start: int,
     fat_bytes: int,
-    root_cluster: int,
+    start_cluster: int,
     cluster_count: int,
     cluster_size: int,
 ) -> list[int]:
     clusters: list[int] = []
     seen: set[int] = set()
-    current = root_cluster
+    current = start_cluster
     while True:
         if current < 2 or current >= cluster_count + 2 or current in seen:
-            raise ValueError("FAT32 root directory chain contains an invalid or repeated cluster.")
-        if (len(clusters) + 1) * cluster_size > MAX_ROOT_DIRECTORY_BYTES:
-            raise ValueError("FAT32 root directory chain exceeds the 64 MiB inspection limit.")
+            raise ValueError("FAT32 directory chain contains an invalid or repeated cluster.")
+        if (len(clusters) + 1) * cluster_size > MAX_DIRECTORY_CHAIN_BYTES:
+            raise ValueError("FAT32 directory chain exceeds the 64 MiB inspection limit.")
         clusters.append(current)
         seen.add(current)
         next_cluster = _fat_entry(image, fat_start, fat_bytes, current)
         if next_cluster >= FAT32_EOC_MIN:
             break
         if next_cluster in (0, 1, FAT32_BAD_CLUSTER) or next_cluster >= 0x0FFFFFF0:
-            raise ValueError("FAT32 root directory chain contains a free, bad, or reserved cluster.")
+            raise ValueError("FAT32 directory chain contains a free, bad, or reserved cluster.")
         current = next_cluster
         if len(clusters) > cluster_count:
-            raise ValueError("FAT32 root directory chain exceeds the declared cluster count.")
+            raise ValueError("FAT32 directory chain exceeds the declared cluster count.")
     return clusters
+
+
+def _entry_cluster(entry: bytes) -> int:
+    return ((struct.unpack_from("<H", entry, 20)[0] & 0x0FFF) << 16) | struct.unpack_from(
+        "<H", entry, 26
+    )[0]
+
+
+def _is_dot_directory(entry: bytes) -> bool:
+    return entry[:11].rstrip(b" ") in (b".", b"..")
+
+
+def _add_warning(warnings: list[str], message: str) -> None:
+    if len(warnings) < MAX_WARNINGS:
+        warnings.append(message)
+    elif len(warnings) == MAX_WARNINGS:
+        warnings.append("Additional recovery warnings were omitted.")
 
 
 def _extension(entry: bytes) -> str:
@@ -141,108 +166,213 @@ def _recover_volume(
     partition_number: int,
     output: Path,
     rows: list[dict[str, Any]],
-) -> tuple[int, list[str]]:
+) -> tuple[int, list[str], int, int]:
     warnings: list[str] = []
     geometry = _volume_geometry(image, volume, available_bytes)
     cluster_size = geometry["cluster_size"]
-    root_clusters = _root_chain(
-        image,
-        fat_start=geometry["fat_start"],
-        fat_bytes=geometry["fat_bytes"],
-        root_cluster=geometry["root_cluster"],
-        cluster_count=geometry["cluster_count"],
-        cluster_size=cluster_size,
-    )
     deleted_seen = 0
     total_recovered_bytes = sum(int(row["size_bytes"]) for row in rows)
-    stop_directory = False
-    for directory_cluster in root_clusters:
-        directory_offset = geometry["data_start"] + (directory_cluster - 2) * cluster_size
-        directory_end = directory_offset + cluster_size
-        if directory_offset < geometry["data_start"] or directory_end > geometry["data_end"]:
-            raise ValueError("FAT32 root directory cluster lies outside the data region.")
-        for entry_offset in range(directory_offset, directory_end, 32):
-            entry = image[entry_offset : entry_offset + 32]
-            first_byte = entry[0]
-            if first_byte == 0x00:
+    root_cluster = geometry["root_cluster"]
+    pending_directories = deque([(root_cluster, 0)])
+    scheduled_starts = {root_cluster}
+    scanned_directory_clusters: set[int] = set()
+    scanned_directory_count = 0
+    total_directory_bytes = 0
+    depth_limit_reported = False
+    count_limit_reported = False
+    candidate_limit_reported = False
+    directory_scan_complete = True
+    deleted_entries: list[tuple[int, int, int, bytes]] = []
+
+    while pending_directories:
+        directory_start, depth = pending_directories.popleft()
+        if scanned_directory_count >= MAX_DIRECTORY_COUNT:
+            _add_warning(warnings, f"Stopped after the {MAX_DIRECTORY_COUNT}-directory safety limit.")
+            directory_scan_complete = False
+            break
+        try:
+            directory_clusters = _directory_chain(
+                image,
+                fat_start=geometry["fat_start"],
+                fat_bytes=geometry["fat_bytes"],
+                start_cluster=directory_start,
+                cluster_count=geometry["cluster_count"],
+                cluster_size=cluster_size,
+            )
+        except ValueError as error:
+            if directory_start == root_cluster:
+                raise
+            _add_warning(warnings, f"FAT32 subdirectory at cluster {directory_start} was skipped: {error}")
+            directory_scan_complete = False
+            continue
+
+        directory_bytes = len(directory_clusters) * cluster_size
+        if total_directory_bytes + directory_bytes > MAX_TOTAL_DIRECTORY_BYTES:
+            _add_warning(warnings, "Stopped before exceeding the 256 MiB total-directory scan limit.")
+            directory_scan_complete = False
+            break
+        overlap = scanned_directory_clusters.intersection(directory_clusters)
+        if overlap:
+            _add_warning(
+                warnings,
+                f"FAT32 directory at cluster {directory_start} overlaps an already scanned chain; skipped.",
+            )
+            directory_scan_complete = False
+            continue
+        scanned_directory_clusters.update(directory_clusters)
+        scanned_directory_count += 1
+        total_directory_bytes += directory_bytes
+
+        stop_directory = False
+        for directory_cluster in directory_clusters:
+            directory_offset = geometry["data_start"] + (directory_cluster - 2) * cluster_size
+            directory_end = directory_offset + cluster_size
+            if directory_offset < geometry["data_start"] or directory_end > geometry["data_end"]:
+                if directory_start == root_cluster:
+                    raise ValueError("FAT32 root directory cluster lies outside the data region.")
+                _add_warning(
+                    warnings,
+                    f"FAT32 subdirectory at cluster {directory_start} has a cluster outside the data region; skipped.",
+                )
+                directory_scan_complete = False
                 stop_directory = True
                 break
-            if first_byte != 0xE5:
-                continue
-            attributes = entry[11]
-            if attributes == 0x0F or attributes & 0x18:
-                continue
-            deleted_seen += 1
-            if len(rows) >= MAX_CANDIDATES:
-                warnings.append(f"Stopped after the {MAX_CANDIDATES}-candidate safety limit.")
-                return deleted_seen, warnings
+            for entry_offset in range(directory_offset, directory_end, 32):
+                entry = image[entry_offset : entry_offset + 32]
+                first_byte = entry[0]
+                if first_byte == 0x00:
+                    stop_directory = True
+                    break
+                attributes = entry[11]
+                if first_byte == 0xE5:
+                    if attributes == 0x0F or attributes & 0x18:
+                        continue
+                    deleted_seen += 1
+                    if len(deleted_entries) < MAX_CANDIDATES:
+                        deleted_entries.append((entry_offset, directory_cluster, depth, entry))
+                    elif not candidate_limit_reported:
+                        _add_warning(warnings, f"Only the first {MAX_CANDIDATES} deleted entries will be considered.")
+                        candidate_limit_reported = True
+                    continue
 
-            file_size = struct.unpack_from("<I", entry, 28)[0]
-            first_cluster = (
-                (struct.unpack_from("<H", entry, 20)[0] & 0x0FFF) << 16
-            ) | struct.unpack_from("<H", entry, 26)[0]
-            extension = _extension(entry)
-            if file_size > MAX_RECOVERED_FILE_BYTES:
-                warnings.append(
-                    f"Deleted entry at {entry_offset} declares {file_size} bytes, over the 256 MiB per-file limit; skipped."
+                if attributes == 0x0F or not attributes & 0x10 or attributes & 0x08 or _is_dot_directory(entry):
+                    continue
+                child_cluster = _entry_cluster(entry)
+                if child_cluster < 2 or child_cluster >= geometry["cluster_count"] + 2:
+                    _add_warning(
+                        warnings,
+                        f"Active subdirectory entry at {entry_offset} has an invalid first cluster; skipped.",
+                    )
+                    directory_scan_complete = False
+                    continue
+                if depth >= MAX_DIRECTORY_DEPTH:
+                    if not depth_limit_reported:
+                        _add_warning(warnings, f"Stopped descending at the {MAX_DIRECTORY_DEPTH}-level depth limit.")
+                        depth_limit_reported = True
+                    directory_scan_complete = False
+                    continue
+                if child_cluster in scheduled_starts:
+                    continue
+                if len(scheduled_starts) >= MAX_DIRECTORY_COUNT:
+                    if not count_limit_reported:
+                        _add_warning(warnings, f"Stopped queuing subdirectories at the {MAX_DIRECTORY_COUNT}-directory safety limit.")
+                        count_limit_reported = True
+                    directory_scan_complete = False
+                    continue
+                scheduled_starts.add(child_cluster)
+                pending_directories.append((child_cluster, depth + 1))
+            if stop_directory:
+                break
+
+    if not directory_scan_complete:
+        _add_warning(
+            warnings,
+            "Directory traversal was incomplete; extraction was skipped to avoid reading ranges that may overlap uninspected directory data.",
+        )
+        return deleted_seen, warnings, scanned_directory_count, total_directory_bytes
+
+    sorted_directory_clusters = sorted(scanned_directory_clusters)
+    for entry_offset, directory_cluster, depth, entry in deleted_entries:
+        if len(rows) >= MAX_CANDIDATES:
+            _add_warning(warnings, f"Stopped after the {MAX_CANDIDATES}-candidate safety limit.")
+            break
+        file_size = struct.unpack_from("<I", entry, 28)[0]
+        first_cluster = _entry_cluster(entry)
+        extension = _extension(entry)
+        if file_size > MAX_RECOVERED_FILE_BYTES:
+            _add_warning(
+                warnings,
+                f"Deleted entry at {entry_offset} declares {file_size} bytes, over the 256 MiB per-file limit; skipped.",
+            )
+            continue
+        if total_recovered_bytes + file_size > MAX_TOTAL_RECOVERED_BYTES:
+            _add_warning(warnings, "Stopped before exceeding the 1 GiB total-recovery safety limit.")
+            break
+        if file_size == 0:
+            data_offset = geometry["data_start"]
+        else:
+            if first_cluster < 2 or first_cluster >= geometry["cluster_count"] + 2:
+                _add_warning(warnings, f"Deleted entry at {entry_offset} has an invalid first cluster; skipped.")
+                continue
+            data_offset = geometry["data_start"] + (first_cluster - 2) * cluster_size
+            data_end = data_offset + file_size
+            if data_end > geometry["data_end"] or data_end > len(image):
+                _add_warning(warnings, f"Deleted entry at {entry_offset} exceeds the contiguous data region; skipped.")
+                continue
+            end_cluster = first_cluster + (file_size + cluster_size - 1) // cluster_size
+            overlap_index = bisect_left(sorted_directory_clusters, first_cluster)
+            if (
+                overlap_index < len(sorted_directory_clusters)
+                and sorted_directory_clusters[overlap_index] < end_cluster
+            ):
+                _add_warning(
+                    warnings,
+                    f"Deleted entry at {entry_offset} overlaps an active directory cluster; skipped.",
                 )
                 continue
-            if total_recovered_bytes + file_size > MAX_TOTAL_RECOVERED_BYTES:
-                warnings.append("Stopped before exceeding the 1 GiB total-recovery safety limit.")
-                return deleted_seen, warnings
-            if file_size == 0:
-                data_offset = geometry["data_start"]
-            else:
-                if first_cluster < 2 or first_cluster >= geometry["cluster_count"] + 2:
-                    warnings.append(f"Deleted entry at {entry_offset} has an invalid first cluster; skipped.")
-                    continue
-                data_offset = geometry["data_start"] + (first_cluster - 2) * cluster_size
-                data_end = data_offset + file_size
-                if data_end > geometry["data_end"] or data_end > len(image):
-                    warnings.append(f"Deleted entry at {entry_offset} exceeds the contiguous data region; skipped.")
-                    continue
 
-            filename = f"deleted_p{partition_number:02d}_entry_{entry_offset:012x}{extension}"
-            target = output / filename
-            view = memoryview(image)[data_offset : data_offset + file_size]
-            digest = hashlib.sha256(view).hexdigest()
+        filename = f"deleted_p{partition_number:02d}_entry_{entry_offset:012x}{extension}"
+        target = output / filename
+        view = memoryview(image)[data_offset : data_offset + file_size]
+        digest = hashlib.sha256(view).hexdigest()
+        try:
+            with target.open("xb") as handle:
+                handle.write(view)
+        except Exception:
             try:
-                with target.open("xb") as handle:
-                    handle.write(view)
-            except Exception:
-                try:
-                    target.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                raise
-            finally:
-                view.release()
-            total_recovered_bytes += file_size
-            rows.append({
-                "filename": filename,
-                "format": extension[1:],
-                "offset": data_offset,
-                "end_offset_exclusive": data_offset + file_size,
-                "size_bytes": file_size,
-                "complete_boundary": True,
-                "format_valid": None,
-                "validation_note": "Experimental FAT32 deleted root 8.3 entry; file data was assumed contiguous and not format-validated",
-                "sha256": digest,
-                "partition_number": partition_number,
-                "directory_entry_offset": entry_offset,
-                "first_cluster": first_cluster,
-                "recovery_assumption": "contiguous cluster data; original first filename character unavailable",
-            })
-        if stop_directory:
-            break
-    return deleted_seen, warnings
+                target.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
+        finally:
+            view.release()
+        total_recovered_bytes += file_size
+        rows.append({
+            "filename": filename,
+            "format": extension[1:],
+            "offset": data_offset,
+            "end_offset_exclusive": data_offset + file_size,
+            "size_bytes": file_size,
+            "complete_boundary": True,
+            "format_valid": None,
+            "validation_note": "Experimental FAT32 deleted short entry; file data was assumed contiguous and not format-validated",
+            "sha256": digest,
+            "partition_number": partition_number,
+            "directory_entry_offset": entry_offset,
+            "directory_cluster": directory_cluster,
+            "directory_depth": depth,
+            "first_cluster": first_cluster,
+            "recovery_assumption": "active directory chain; contiguous file data; original first filename character unavailable",
+        })
+    return deleted_seen, warnings, scanned_directory_count, total_directory_bytes
 
 
 def recover_deleted_fat32(image_path: Path, output_dir: Path) -> Fat32RecoveryResult:
-    """Recover deleted short-file entries from FAT32 root directories only.
+    """Recover deleted short-file entries from FAT32 root and active subdirectories.
 
     The source must be a regular raw image file. The image is memory-mapped read-only.
-    This experimental version assumes each file's data occupies contiguous clusters.
+    This experimental version assumes each file's data occupies contiguous clusters;
+    deleted directories and long filenames are not recovered.
     """
     source = image_path.expanduser().resolve(strict=True)
     source_stat = source.stat()
@@ -267,6 +397,8 @@ def recover_deleted_fat32(image_path: Path, output_dir: Path) -> Fat32RecoveryRe
     rows: list[dict[str, Any]] = []
     warnings: list[str] = []
     deleted_entries_seen = 0
+    directories_scanned = 0
+    directory_bytes_scanned = 0
     with source.open("rb") as handle:
         with mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as image:
             for volume in fat_volumes:
@@ -281,14 +413,22 @@ def recover_deleted_fat32(image_path: Path, output_dir: Path) -> Fat32RecoveryRe
                     available = min(partition.size_bytes, len(image) - volume.offset_bytes)
                     partition_number = partition.number
                 try:
-                    seen, volume_warnings = _recover_volume(
+                    seen, volume_warnings, scanned_dirs, scanned_bytes = _recover_volume(
                         image, volume, available, partition_number, destination, rows
                     )
                     deleted_entries_seen += seen
+                    directories_scanned += scanned_dirs
+                    directory_bytes_scanned += scanned_bytes
                     warnings.extend(volume_warnings)
                 except ValueError as error:
                     warnings.append(f"FAT32 volume at byte offset {volume.offset_bytes} was not recovered: {error}")
 
     if not rows:
-        warnings.append("No recoverable deleted short-file entries were found in supported FAT32 root directories.")
-    return Fat32RecoveryResult(rows, warnings, deleted_entries_seen)
+        warnings.append("No recoverable deleted short-file entries were found in supported FAT32 directories.")
+    return Fat32RecoveryResult(
+        rows,
+        warnings,
+        deleted_entries_seen,
+        directories_scanned,
+        directory_bytes_scanned,
+    )

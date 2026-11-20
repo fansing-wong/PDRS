@@ -36,7 +36,7 @@ def recover_fat32_deleted(
         None, "--ground-truth", exists=True, readable=True, help="Optional Ground Truth CSV for hash/offset comparison"
     ),
 ) -> None:
-    """Experimental: recover deleted FAT32 root-directory 8.3 entries as contiguous data."""
+    """Experimental: recover deleted FAT32 short entries in active directories as contiguous data."""
     try:
         result = recover_deleted_fat32(image, output)
         manifest = write_manifest(output, result.rows)
@@ -52,7 +52,11 @@ def recover_fat32_deleted(
                 handle.write("\n".join(result.warnings) + "\n")
     except (OSError, ValueError) as error:
         raise typer.BadParameter(str(error)) from error
-    typer.echo(f"Deleted root entries examined: {result.deleted_entries_seen}")
+    typer.echo(f"Deleted short-file entries examined: {result.deleted_entries_seen}")
+    typer.echo(
+        f"Directories scanned: {result.directories_scanned} "
+        f"({result.directory_bytes_scanned:,} bytes)"
+    )
     typer.echo(f"Recovered candidates: {len(result.rows)}")
     typer.echo(f"Manifest: {manifest}")
     if evaluation is not None:

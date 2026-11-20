@@ -1,10 +1,10 @@
 # Recovery scenarios and platform roadmap
 
-## Current pilot (PDRS 0.10.0)
+## Current pilot (PDRS 0.11.0)
 
 PDRS accepts regular raw image files and reads them without writing to the source. It carves contiguous BMP, JPEG, PNG, PDF, and SQLite main-database candidates. SQLite candidates up to 64 MiB receive `PRAGMA quick_check`; larger candidates receive bounded header and page-one checks, with the skipped deep check reported. The scanner does not join SQLite `-wal` files, recover deleted rows, or interpret app-specific schemas.
 
-The structure inspector reads MBR/GPT partition tables, FAT32 and exFAT boot metadata, an NTFS boot marker, and the ext-family superblock. In addition, `recover-fat32-deleted` experimentally reads deleted short-name entries in FAT32 root directories and attempts to extract each file from a contiguous data range. It does not restore long filenames, recurse into subdirectories, or reassemble fragmented files. Other filesystem directory entries, allocation records, inode tables, and file contents are not read. ext4 recognition remains metadata-only.
+The structure inspector reads MBR/GPT partition tables, FAT32 and exFAT boot metadata, an NTFS boot marker, and the ext-family superblock. In addition, `recover-fat32-deleted` experimentally reads deleted short-name entries from the root directory and still-active subdirectories, then attempts to extract each file from a contiguous data range. It does not enter deleted directories, restore long filenames, or reassemble fragmented files. Directory traversal is bounded by depth, count, and total bytes. When traversal is incomplete, extraction stops for that volume; candidate ranges overlapping scanned active directory clusters are skipped. Other filesystem allocation records, inode tables, and file contents are not read. ext4 recognition remains metadata-only.
 
 ## Reproducible deletion and damage examples
 
@@ -25,14 +25,14 @@ Each result folder contains a manifest and Ground Truth comparison. The exact ha
 
 ## FAT32 deleted-entry pilot
 
-`examples/make_fat32_deleted_demo.py` builds a synthetic MBR/FAT32 image with a deleted root 8.3 entry and a known text payload. Run `examples/run_fat32_deleted_demo.py` to compare recovered SHA-256 and data offset with Ground Truth, or use the CLI directly:
+`examples/make_fat32_deleted_demo.py` builds a synthetic MBR/FAT32 image with deleted 8.3 entries in the root and an active subdirectory, plus active-file and deleted-directory controls. Run `examples/run_fat32_deleted_demo.py` to compare recovered SHA-256 and data offsets with Ground Truth. The script accepts a custom output location so existing demo results are not overwritten:
 
 ```powershell
-.\.venv\Scripts\python.exe .\examples\make_fat32_deleted_demo.py
-.\.venv\Scripts\pdrs.exe recover-fat32-deleted .\examples\fat32_deleted_demo\images\fat32_deleted_root.img .\examples\fat32_deleted_demo\cli_results --ground-truth .\examples\fat32_deleted_demo\ground_truth.csv
+.\.venv\Scripts\python.exe .\examples\make_fat32_deleted_demo.py --output-dir .\examples\fat32_deleted_demo_v11
+.\.venv\Scripts\python.exe .\examples\run_fat32_deleted_demo.py --demo-dir .\examples\fat32_deleted_demo_v11
 ```
 
-The deleted first filename character is gone and cannot be inferred. The command recovers generic bytes from the directory-entry size and first cluster. It assumes contiguous storage because deletion may clear FAT chain entries. It does not validate the recovered file format, and a fragmented file may be wrong. This first pilot should be treated as a controlled proof of concept, not a broad FAT32 recovery claim.
+The deleted first filename character is gone and cannot be inferred. The command recovers generic bytes from the directory-entry size and first cluster. It only finds entries inside directories whose own chains remain active; it cannot traverse a deleted directory. It assumes contiguous storage because deletion may clear FAT chain entries. It does not validate the recovered file format, and a fragmented file may be wrong. Treat this as a controlled proof of concept, not a broad FAT32 recovery claim.
 
 ## Platform and filesystem plan
 
@@ -40,7 +40,7 @@ Operating system names are not filesystem formats. Recovery depends on the files
 
 | Platform | Common formats or data | Current PDRS status | Next research step |
 | --- | --- | --- | --- |
-| Windows | NTFS, FAT32, exFAT; SQLite app databases | Experimental FAT32 root 8.3 deleted-entry extraction with contiguous-data assumption; FAT32/exFAT boot metadata; NTFS marker only | Add FAT32 subdirectory/LFN and fragmented-file studies; then synthetic NTFS MFT experiments |
+| Windows | NTFS, FAT32, exFAT; SQLite app databases | Experimental FAT32 root and active-subdirectory 8.3 deleted-entry extraction with contiguous-data assumption; FAT32/exFAT boot metadata; NTFS marker only | Add FAT32 LFN and fragmented-file studies; then synthetic NTFS MFT experiments |
 | Linux | ext4, XFS, Btrfs; SQLite app databases | ext superblock recognition; no directory or inode recovery | Add ext4 inode and extent metadata inspection, starting read-only on synthetic images |
 | Android | ext4 or F2FS userdata; SQLite app databases | ext superblock recognition where ext4 is used; no F2FS or Android app parser | Add F2FS metadata research and export-based SQLite experiments; encryption/key availability must be recorded |
 | Apple | APFS, HFS+; app databases | No APFS/HFS+ parser; generic SQLite carving only when an accessible image contains plaintext bytes | Start with read-only APFS container/volume metadata; encrypted volumes require authorized unlocked/exported data |
@@ -54,7 +54,7 @@ The current program does not open physical drives. For a later research mileston
 ## Suggested milestone order
 
 1. Add more FAT32 synthetic samples, including zero-length, multi-cluster contiguous, and interrupted cases, and report byte-level recovery and false-positive rates.
-2. Add read-only FAT32 subdirectory/LFN analysis and evaluate when a contiguous assumption is not justified; do not silently claim fragmented recovery.
+2. Add FAT32 long-filename parsing and evaluate when a contiguous assumption is not justified; do not silently claim fragmented recovery.
 3. Add bounded NTFS MFT record inspection and separately evaluate resident versus nonresident data.
 4. Add ext4 inode/extent metadata reading, with explicit limits for journal replay and extents.
 5. Evaluate F2FS and APFS metadata as separate projects because their structures and encryption constraints differ.
