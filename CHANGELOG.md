@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.0 — Visible FAT32 fragmentation guard
+
+- Checks the FAT links needed for each deleted entry's declared size before contiguous extraction.
+- Skips candidates when a surviving FAT link visibly jumps to a non-adjacent cluster, instead of silently emitting bytes from the wrong range.
+- Keeps a clearly labelled contiguous-data assumption when deleted FAT links are cleared or unavailable.
+- Extends the synthetic FAT32 demo with a fragmented file whose intervening cluster contains unrelated decoy bytes.
+
 ## 0.12.0 — FAT32 deleted long-name reconstruction
 
 - Reconstructs a display filename from adjacent deleted FAT32 LFN slots in the root or active subdirectories.

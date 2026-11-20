@@ -237,11 +237,34 @@ class Fat32RecoveryTests(unittest.TestCase):
             row = result.rows[0]
             self.assertEqual(row["offset"], expected_offset)
             self.assertEqual(row["format"], "txt")
+            self.assertEqual(row["data_layout_status"], "fat_chain_unavailable")
             self.assertTrue(row["filename"].endswith(".txt"))
             self.assertIsNone(row["format_valid"])
             self.assertEqual((output / str(row["filename"])).read_bytes(), payload)
             self.assertEqual(row["sha256"], hashlib.sha256(payload).hexdigest())
             self.assertEqual(hashlib.sha256(image.read_bytes()).hexdigest(), before_hash)
+
+    def test_skips_deleted_file_when_surviving_fat_link_shows_fragmentation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_fragmented_deleted.img"
+            make_deleted_fat32_image(image)
+            fat_offset = SECTOR_SIZE + FAT_START_SECTOR * SECTOR_SIZE
+            with image.open("r+b") as handle:
+                # The deleted file needs two clusters. Keep a link to a non-adjacent
+                # cluster so contiguous extraction would incorrectly include cluster 11.
+                handle.seek(fat_offset + FILE_CLUSTER * 4)
+                handle.write(struct.pack("<I", FILE_CLUSTER + 2))
+                handle.seek(fat_offset + (FILE_CLUSTER + 2) * 4)
+                handle.write(struct.pack("<I", 0x0FFFFFFF))
+
+            output = root / "recovered"
+            result = recover_deleted_fat32(image, output)
+
+            self.assertEqual(result.deleted_entries_seen, 1)
+            self.assertEqual(result.rows, [])
+            self.assertEqual(list(output.iterdir()), [])
+            self.assertTrue(any("non-contiguous FAT link" in item for item in result.warnings))
 
     def test_recovers_deleted_short_entry_in_active_subdirectory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -55,6 +55,37 @@ def _fat_entry(image: mmap.mmap, fat_start: int, fat_bytes: int, cluster: int) -
     return struct.unpack_from("<I", image, entry_offset)[0] & 0x0FFFFFFF
 
 
+def _fat_data_layout(
+    image: mmap.mmap,
+    *,
+    fat_start: int,
+    fat_bytes: int,
+    first_cluster: int,
+    required_clusters: int,
+    cluster_count: int,
+) -> str:
+    """Classify only the FAT links needed to read a deleted file's declared size.
+
+    A visible non-contiguous link is enough to refuse contiguous extraction. Missing
+    or cleared links do not prove fragmentation, so those retain the explicitly
+    labelled contiguous-data assumption.
+    """
+    if required_clusters <= 1:
+        return "single_cluster"
+    current = first_cluster
+    for _ in range(required_clusters - 1):
+        try:
+            next_cluster = _fat_entry(image, fat_start, fat_bytes, current)
+        except ValueError:
+            return "fat_chain_unavailable"
+        if next_cluster < 2 or next_cluster >= cluster_count + 2:
+            return "fat_chain_unavailable"
+        if next_cluster != current + 1:
+            return "fragmented_chain_skipped"
+        current = next_cluster
+    return "contiguous_fat_links"
+
+
 def _directory_chain(
     image: mmap.mmap,
     *,
@@ -422,9 +453,25 @@ def _recover_volume(
             break
         if file_size == 0:
             data_offset = geometry["data_start"]
+            data_layout_status = "zero_length"
         else:
             if first_cluster < 2 or first_cluster >= geometry["cluster_count"] + 2:
                 _add_warning(warnings, f"Deleted entry at {entry_offset} has an invalid first cluster; skipped.")
+                continue
+            required_clusters = (file_size + cluster_size - 1) // cluster_size
+            data_layout_status = _fat_data_layout(
+                image,
+                fat_start=geometry["fat_start"],
+                fat_bytes=geometry["fat_bytes"],
+                first_cluster=first_cluster,
+                required_clusters=required_clusters,
+                cluster_count=geometry["cluster_count"],
+            )
+            if data_layout_status == "fragmented_chain_skipped":
+                _add_warning(
+                    warnings,
+                    f"Deleted entry at {entry_offset} has a visible non-contiguous FAT link; skipped instead of reading the wrong contiguous range.",
+                )
                 continue
             data_offset = geometry["data_start"] + (first_cluster - 2) * cluster_size
             data_end = data_offset + file_size
@@ -481,7 +528,10 @@ def _recover_volume(
             "original_long_filename": long_name or "",
             "long_filename_status": long_name_status,
             "first_cluster": first_cluster,
-            "recovery_assumption": "active directory chain; contiguous file data; deleted short-alias first byte unavailable",
+            "data_layout_status": data_layout_status,
+            "recovery_assumption": (
+                "active directory chain; contiguous file data; deleted short-alias first byte unavailable"
+            ),
         })
     return deleted_seen, warnings, scanned_directory_count, total_directory_bytes
 

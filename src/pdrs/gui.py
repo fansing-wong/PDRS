@@ -228,7 +228,7 @@ class PDRSApp:
 
         ttk.Label(
             page,
-            text="支持 BMP、JPEG、PNG、PDF、SQLite 连续雕刻；FAT32误删实验性扫描目录并尝试重建相邻长文件名。不会访问物理磁盘或重组碎片。",
+            text="支持 BMP、JPEG、PNG、PDF、SQLite 连续雕刻；FAT32误删实验性扫描目录并尝试重建相邻长文件名。检测到可见碎片链时会跳过，不访问物理磁盘。",
             style="SubTitle.TLabel",
             wraplength=980,
         ).grid(row=4, column=0, sticky="w", pady=(12, 0))
@@ -413,7 +413,7 @@ class PDRSApp:
             "实验性 FAT32 恢复",
             "将只读检查 raw 镜像中 FAT32 根目录及仍可访问的子目录。\n\n"
             "仅尝试短文件名项及相邻 LFN 名称；短名首字符丢失，LFN 校验和无法完整核验。\n"
-            "数据按连续簇读取；不进入已删除目录、不重组碎片，也不保证文件内容有效。\n"
+            "可见非连续 FAT 链会跳过；FAT 链已清空时仍假定数据连续。不进入已删除目录、不重组碎片，也不保证文件内容有效。\n"
             "请只对自己制作或获准检查的镜像副本操作。继续吗？",
             parent=self.root,
         )
@@ -428,7 +428,7 @@ class PDRSApp:
         self.result_info.set("FAT32 恢复进行中…")
         self.summary_info.set("")
         self.evaluation_info.set("")
-        self.details.set("实验性 FAT32 恢复扫描删除短文件名项，并尝试重建相邻 LFN；文件内容假定连续存放。")
+        self.details.set("实验性 FAT32 恢复扫描删除短文件名项并尝试重建相邻 LFN；FAT 链缺失时假定文件连续，可见非连续链会跳过。")
         self._clear_results()
         self._set_busy(True)
         self.status.set("正在只读检查 FAT32 目录…")
@@ -678,7 +678,7 @@ class PDRSApp:
             )
             if evaluation is None:
                 self.evaluation_info.set(
-                    "扫描 8.3 删除项并尝试重建 LFN；提取数据按连续簇假设，短名校验和不完整，格式未验证。"
+                    "扫描 8.3 删除项并尝试重建 LFN；可见碎片链已跳过，清空链仍按连续簇假设，短名校验和不完整，格式未验证。"
                 )
                 self.manifest_info.set(f"Manifest：{manifest}")
             else:
@@ -732,6 +732,15 @@ class PDRSApp:
                 f"目录深度：{row['directory_depth']}    目录簇：{row['directory_cluster']}    "
                 f"目录项偏移：{row['directory_entry_offset']}"
             )
+            layout_status = row.get("data_layout_status")
+            if layout_status == "fragmented_chain_skipped":
+                detail_lines.append("数据布局：检测到非连续 FAT 链，已跳过提取。")
+            elif layout_status == "fat_chain_unavailable":
+                detail_lines.append("数据布局：FAT 链不可用；候选数据按连续簇假设提取。")
+            elif layout_status == "contiguous_fat_links":
+                detail_lines.append("数据布局：所需 FAT 链接连续；这不等于文件内容校验通过。")
+            elif layout_status == "single_cluster":
+                detail_lines.append("数据布局：单簇文件。")
         if row.get("original_long_filename"):
             detail_lines.append(f"恢复的长文件名（短名校验和无法核实）：{row['original_long_filename']}")
         elif row.get("long_filename_status") == "invalid":

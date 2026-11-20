@@ -13,7 +13,7 @@ from pdrs.evaluation import evaluate_ground_truth, load_ground_truth, write_eval
 from pdrs.fat32_recovery import recover_deleted_fat32
 from pdrs.manifest import write_manifest
 
-DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo"
+DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo_v13"
 
 
 def main() -> None:
@@ -38,6 +38,7 @@ def main() -> None:
     recovered_by_name = {str(row["filename"]): row for row in result.rows}
     name_comparison_path = results / "lfn_name_comparison.csv"
     name_matches = 0
+    expected_name_count = sum(bool(detail["target_present"]) for detail in evaluation.details)
     with name_comparison_path.open("x", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle,
@@ -53,8 +54,9 @@ def main() -> None:
             recovered = recovered_by_name.get(str(detail["recovered_filename"]))
             expected_name = Path(str(detail["source_filename"])).name
             recovered_name = str(recovered["original_long_filename"]) if recovered else ""
-            name_match = recovered_name.casefold() == expected_name.casefold()
-            name_matches += int(name_match)
+            name_match = bool(detail["target_present"]) and recovered_name.casefold() == expected_name.casefold()
+            if detail["target_present"]:
+                name_matches += int(name_match)
             writer.writerow({
                 "expected_long_filename": expected_name,
                 "recovered_filename": str(detail["recovered_filename"]),
@@ -68,7 +70,7 @@ def main() -> None:
     print(f"Deleted short entries examined: {result.deleted_entries_seen}")
     print(f"Directories scanned:            {result.directories_scanned}")
     print(f"Recovered candidates: {len(result.rows)}")
-    print(f"LFN exact name matches: {name_matches}/{len(evaluation.details)}")
+    print(f"LFN exact name matches: {name_matches}/{expected_name_count}")
     for row in result.rows:
         name = row["original_long_filename"] or row["filename"]
         print(f"Recovered name:      {name}")
