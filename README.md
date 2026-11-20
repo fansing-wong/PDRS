@@ -57,14 +57,14 @@ python -m venv .venv
 
 ## 合成实验
 
-FAT32 根目录、活动子目录、LFN 名称、已删除目录负向对照、碎片链和中断链拒绝演示及 Ground Truth：
+FAT32 根目录、活动子目录、LFN 名称、连续多簇正向样本、已删除目录负向对照、碎片链和中断链拒绝演示及 Ground Truth：
 
 ```powershell
-.\.venv\Scripts\python.exe .\examples\make_fat32_deleted_demo.py --output-dir .\examples\fat32_deleted_demo_v14
-.\.venv\Scripts\python.exe .\examples\run_fat32_deleted_demo.py --demo-dir .\examples\fat32_deleted_demo_v14
+.\.venv\Scripts\python.exe .\examples\make_fat32_deleted_demo.py --output-dir .\examples\fat32_deleted_demo_v15
+.\.venv\Scripts\python.exe .\examples\run_fat32_deleted_demo.py --demo-dir .\examples\fat32_deleted_demo_v15
 ```
 
-演示会分别报告 SHA-256/偏移精确匹配和 LFN 名称匹配；逐样本名称结果写入 `lfn_name_comparison.csv`。
+演示会分别报告 SHA-256/偏移精确匹配和 LFN 名称匹配；逐样本名称结果写入 `lfn_name_comparison.csv`，候选数据布局计数写入 `data_layout_summary.csv`。
 
 SQLite 误删残留、零填充和截断场景：
 

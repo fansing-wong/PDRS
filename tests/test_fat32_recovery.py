@@ -266,6 +266,27 @@ class Fat32RecoveryTests(unittest.TestCase):
             self.assertEqual(list(output.iterdir()), [])
             self.assertTrue(any("non-contiguous FAT link" in item for item in result.warnings))
 
+    def test_records_contiguous_surviving_fat_links(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_contiguous_chain.img"
+            payload, expected_offset = make_deleted_fat32_image(image)
+            fat_offset = SECTOR_SIZE + FAT_START_SECTOR * SECTOR_SIZE
+            with image.open("r+b") as handle:
+                handle.seek(fat_offset + FILE_CLUSTER * 4)
+                handle.write(struct.pack("<I", FILE_CLUSTER + 1))
+                handle.seek(fat_offset + (FILE_CLUSTER + 1) * 4)
+                handle.write(struct.pack("<I", 0x0FFFFFFF))
+
+            output = root / "recovered"
+            result = recover_deleted_fat32(image, output)
+
+            self.assertEqual(len(result.rows), 1)
+            row = result.rows[0]
+            self.assertEqual(row["data_layout_status"], "contiguous_fat_links")
+            self.assertEqual(row["offset"], expected_offset)
+            self.assertEqual((output / str(row["filename"])).read_bytes(), payload)
+
     def test_skips_deleted_file_when_fat_chain_ends_before_declared_size(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -13,7 +13,7 @@ from pdrs.evaluation import evaluate_ground_truth, load_ground_truth, write_eval
 from pdrs.fat32_recovery import recover_deleted_fat32
 from pdrs.manifest import write_manifest
 
-DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo_v14"
+DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo_v15"
 
 
 def main() -> None:
@@ -37,8 +37,13 @@ def main() -> None:
     comparison, summary = write_evaluation(results, evaluation)
     recovered_by_name = {str(row["filename"]): row for row in result.rows}
     name_comparison_path = results / "lfn_name_comparison.csv"
+    layout_summary_path = results / "data_layout_summary.csv"
     name_matches = 0
     expected_name_count = sum(bool(detail["target_present"]) for detail in evaluation.details)
+    layout_counts: dict[str, int] = {}
+    for row in result.rows:
+        layout = str(row.get("data_layout_status", "unknown"))
+        layout_counts[layout] = layout_counts.get(layout, 0) + 1
     with name_comparison_path.open("x", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle,
@@ -63,6 +68,10 @@ def main() -> None:
                 "recovered_long_filename": recovered_name,
                 "name_match": name_match,
             })
+    with layout_summary_path.open("x", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(("data_layout_status", "candidate_count"))
+        writer.writerows(sorted(layout_counts.items()))
     if result.warnings:
         (results / "recovery_warnings.txt").write_text(
             "\n".join(result.warnings) + "\n", encoding="utf-8"
@@ -74,6 +83,7 @@ def main() -> None:
     for row in result.rows:
         name = row["original_long_filename"] or row["filename"]
         print(f"Recovered name:      {name}")
+        print(f"Data layout status:  {row['data_layout_status']}")
     print(
         "Exact Ground Truth:  "
         f"{evaluation.summary['recovered_exact_count']}/{evaluation.summary['expected_present_count']}"
@@ -84,6 +94,7 @@ def main() -> None:
     print(f"Comparison:          {comparison}")
     print(f"Summary:             {summary}")
     print(f"Name comparison:     {name_comparison_path}")
+    print(f"Data layout summary: {layout_summary_path}")
     for warning in result.warnings:
         print(f"Warning: {warning}")
 

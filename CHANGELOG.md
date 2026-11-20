@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.0 — FAT32 layout evidence reporting
+
+- Reports whether the FAT links needed for a candidate are contiguous or were cleared after deletion.
+- Adds a positive multi-cluster case with a surviving contiguous FAT chain.
+- Writes candidate layout counts to `data_layout_summary.csv` in the synthetic study.
+
 ## 0.14.0 — Interrupted FAT32 chain guard
 
 - Distinguishes cleared FAT links from a premature end-of-chain marker.

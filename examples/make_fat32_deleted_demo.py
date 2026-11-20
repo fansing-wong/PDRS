@@ -7,7 +7,7 @@ import hashlib
 import struct
 from pathlib import Path
 
-DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo_v14"
+DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo_v15"
 TOTAL_SECTORS = 70000
 SECTOR_SIZE = 512
 RESERVED_SECTORS = 32
@@ -131,6 +131,20 @@ def main() -> None:
         struct.pack_into("<I", fat, ROOT_CLUSTER * 4, 0x0FFFFFFF)
         struct.pack_into("<I", fat, (FILE_CLUSTER + 4) * 4, 0x0FFFFFFF)
         struct.pack_into("<I", fat, SUBDIRECTORY_CLUSTER * 4, 0x0FFFFFFF)
+        nested_cluster_count = (len(nested_payload) + SECTOR_SIZE - 1) // SECTOR_SIZE
+        for relative_cluster in range(nested_cluster_count - 1):
+            struct.pack_into(
+                "<I",
+                fat,
+                (NESTED_FILE_CLUSTER + relative_cluster) * 4,
+                NESTED_FILE_CLUSTER + relative_cluster + 1,
+            )
+        struct.pack_into(
+            "<I",
+            fat,
+            (NESTED_FILE_CLUSTER + nested_cluster_count - 1) * 4,
+            0x0FFFFFFF,
+        )
         struct.pack_into("<I", fat, FRAGMENT_FIRST_CLUSTER * 4, FRAGMENT_SECOND_CLUSTER)
         struct.pack_into("<I", fat, FRAGMENT_SECOND_CLUSTER * 4, 0x0FFFFFFF)
         struct.pack_into("<I", fat, INTERRUPTED_FIRST_CLUSTER * 4, 0x0FFFFFFF)
