@@ -1,6 +1,6 @@
 # Recovery scenarios and platform roadmap
 
-## Current pilot (PDRS 0.21.0)
+## Current pilot (PDRS 0.22.0)
 
 PDRS accepts regular raw image files and reads them without writing to the source. It carves contiguous BMP, JPEG, PNG, PDF, and SQLite main-database candidates. SQLite candidates up to 64 MiB receive `PRAGMA quick_check`; larger candidates receive bounded header and page-one checks, with the skipped deep check reported. The scanner does not join SQLite `-wal` files, recover deleted rows, or interpret app-specific schemas.
 
@@ -104,8 +104,13 @@ The current program does not open physical drives. For a later research mileston
 ## Structure references
 
 - [SQLite file format](https://www.sqlite.org/fileformat.html)
+- [Microsoft FAT32 File System Specification](https://www.pcjs.org/documents/papers/microsoft/MS_FAT_OVERVIEW_103-2000-12-06.pdf)
 - [Linux kernel ext4 superblock documentation](https://docs.kernel.org/filesystems/ext4/super.html)
 - [Android file-based encryption](https://source.android.com/docs/security/features/encryption/file-based)
 - [Microsoft NTFS overview](https://learn.microsoft.com/en-us/windows-server/storage/file-server/ntfs-overview)
 - [Apple file system formats](https://support.apple.com/guide/disk-utility/file-system-formats-dsku19ed921c/22.7/mac/27)
 - [Apple platform data protection](https://support.apple.com/guide/security/sec4c6dc1b6e/web)
+
+## FAT copy selection
+
+The FAT32 reader follows `BPB_ExtFlags`: when mirroring is disabled, it reads the designated active FAT copy and rejects an index outside the declared FAT count. When mirroring is enabled, it reads copy 0 and emits a warning that the other copies are not cross-checked. This avoids silently using the wrong table on volumes with an explicitly selected active copy, but does not detect divergence or repair FAT metadata.

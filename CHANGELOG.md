@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.22.0 — FAT32 active FAT selection
+
+- Reads FAT32 `BPB_ExtFlags` and follows the designated active FAT when mirroring is disabled.
+- Rejects volumes whose flags select a FAT copy outside the declared FAT count.
+- Reports when mirrored copies are not cross-checked; mirrored volumes still use copy 0.
+
 ## 0.21.0 — FAT32 reuse, cyclic-chain, and bad-cluster controls
 
 - Adds a synthetic control with two deleted directories whose clusters are reused by two distinct active files; each active payload contains a directory-entry decoy.

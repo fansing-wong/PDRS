@@ -55,7 +55,7 @@ def _partition_for(volume: VolumeInfo, structure: ImageStructure) -> Partition |
 def _fat_entry(image: mmap.mmap, fat_start: int, fat_bytes: int, cluster: int) -> int:
     entry_offset = fat_start + cluster * 4
     if cluster < 0 or entry_offset + 4 > fat_start + fat_bytes:
-        raise ValueError("FAT entry lies outside the first FAT table.")
+        raise ValueError("FAT entry lies outside the selected FAT table.")
     return struct.unpack_from("<I", image, entry_offset)[0] & 0x0FFFFFFF
 
 
@@ -520,6 +520,7 @@ def _volume_geometry(
     fat_count = boot[16]
     total_sectors = struct.unpack_from("<I", boot, 32)[0]
     sectors_per_fat = struct.unpack_from("<I", boot, 36)[0]
+    extended_flags = struct.unpack_from("<H", boot, 40)[0]
     root_cluster = struct.unpack_from("<I", boot, 44)[0]
 
     if bytes_per_sector not in (512, 1024, 2048, 4096):
@@ -528,13 +529,18 @@ def _volume_geometry(
         raise ValueError("Invalid FAT32 sectors-per-cluster value.")
     if reserved_sectors == 0 or not 1 <= fat_count <= 4 or sectors_per_fat == 0:
         raise ValueError("FAT32 reserved-sector or FAT geometry is invalid.")
+    mirroring_enabled = not bool(extended_flags & 0x0080)
+    active_fat_index = 0 if mirroring_enabled else extended_flags & 0x000F
+    if active_fat_index >= fat_count:
+        raise ValueError("FAT32 BPB_ExtFlags selects a FAT copy that does not exist.")
     data_sectors = total_sectors - reserved_sectors - fat_count * sectors_per_fat
     cluster_count = data_sectors // sectors_per_cluster if data_sectors > 0 else 0
     cluster_size = bytes_per_sector * sectors_per_cluster
     volume_bytes = total_sectors * bytes_per_sector
-    fat_start = offset + reserved_sectors * bytes_per_sector
+    first_fat_start = offset + reserved_sectors * bytes_per_sector
     fat_bytes = sectors_per_fat * bytes_per_sector
-    data_start = fat_start + fat_count * fat_bytes
+    fat_start = first_fat_start + active_fat_index * fat_bytes
+    data_start = first_fat_start + fat_count * fat_bytes
     if (
         cluster_count <= 0
         or root_cluster < 2
@@ -555,6 +561,9 @@ def _volume_geometry(
         "volume_end": offset + volume_bytes,
         "fat_start": fat_start,
         "fat_bytes": fat_bytes,
+        "fat_copy_index": active_fat_index,
+        "fat_copy_count": fat_count,
+        "fat_mirroring_enabled": int(mirroring_enabled),
         "data_start": data_start,
         "data_end": data_start + cluster_count * cluster_size,
     }
@@ -573,6 +582,17 @@ def _recover_volume(
 ) -> tuple[int, list[str], int, int]:
     warnings: list[str] = []
     geometry = _volume_geometry(image, volume, available_bytes)
+    if geometry["fat_mirroring_enabled"]:
+        if geometry["fat_copy_count"] > 1:
+            _add_warning(
+                warnings,
+                "FAT32 mirroring is enabled; FAT copy 0 was selected without comparing the other copies.",
+            )
+    else:
+        _add_warning(
+            warnings,
+            f"FAT32 mirroring is disabled; active FAT copy {geometry['fat_copy_index']} was selected from BPB_ExtFlags.",
+        )
     cluster_size = geometry["cluster_size"]
     deleted_seen = 0
     total_recovered_bytes = sum(int(row["size_bytes"]) for row in rows)
