@@ -115,6 +115,14 @@ v0.20 增加不完整目录链和 LFN 槽被覆盖的对照：
 
 三种簇大小下，不完整目录链都被整体跳过；LFN 槽受覆盖时，文件内容仍精确恢复，但名字只重建出部分文本。清单会明确标注已删除 LFN 的重建结果为尽力推断且可能不完整。矩阵输出到 `examples/fat32_deleted_directory_matrix_v20`。
 
+v0.21 扩展簇复用和异常目录链控制：
+
+```powershell
+.\.venv\Scripts\python.exe .\examples\run_deleted_directory_matrix_v21.py
+```
+
+两个不同的活动文件分别复用两个已删除目录的数据簇；扫描器都跳过相应目录链，避免把活动文件内容中的伪目录项当作已删除文件。循环 FAT 链和坏簇链接也都被跳过。三种簇大小下基准目标均精确恢复、误报为零。结果写入 `examples/fat32_deleted_directory_matrix_v21`。
+
 SQLite 误删残留、零填充和截断场景：
 
 ```powershell

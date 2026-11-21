@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.21.0 — FAT32 reuse, cyclic-chain, and bad-cluster controls
+
+- Adds a synthetic control with two deleted directories whose clusters are reused by two distinct active files; each active payload contains a directory-entry decoy.
+- Confirms both reused directories are skipped before their file-data bytes can be mistaken for directory entries.
+- Adds deleted-directory FAT-chain cycle and bad-cluster-link controls.
+- Across three cluster sizes, all baseline targets remained exact, all expected-absent controls stayed absent, and no false-positive candidates were emitted.
+
 ## 0.20.0 — FAT32 partial-chain and overwritten-LFN controls
 
 - Adds synthetic controls for a deleted directory whose FAT chain ends in a free cluster and for a deleted long-name slot overwritten by an active directory entry.

@@ -145,3 +145,21 @@ These are deterministic synthetic controls, not measurements of field recovery p
 | 2,048 B | Overwritten LFN slot | 5 | 5/5 | 3 | 0 | 1 | Exact bytes | `Deleted repor` (partial) |
 
 The LFN result is an intentional limitation measurement: file bytes and offset matched Ground Truth, while the display name did not. FAT32 deletion erases each deleted LFN slot's ordinal as well as the short-name first byte, so a syntactically valid partial sequence cannot be distinguished reliably from a complete one. PDRS now records that the reconstructed name is best-effort and may be partial. The results are deterministic synthetic controls, not estimates of real-media recovery rates.
+
+### v0.21: multiple active-file reuse, cyclic chains, and bad-cluster links
+
+`run_deleted_directory_matrix_v21.py` runs three controls at 512 B, 1 KiB, and 2 KiB cluster sizes. The multiple-reuse case contains two deleted directories, each sharing its single data cluster with a different active file. The active-file bytes deliberately begin with a plausible deleted short entry pointing to a known decoy payload; the scanner must reject the directory before parsing those bytes. The other controls make a deleted directory's FAT chain cyclic or point to the FAT32 bad-cluster marker.
+
+| Cluster size | Scenario | Expected present | Exact | Expected absent | False positives | Deleted-directory candidates | Overlap skips | Invalid-chain skips |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 B | Two active files reuse two directories | 4 | 4/4 | 6 | 0 | 0 | 2 | 0 |
+| 1,024 B | Two active files reuse two directories | 4 | 4/4 | 6 | 0 | 0 | 2 | 0 |
+| 2,048 B | Two active files reuse two directories | 4 | 4/4 | 6 | 0 | 0 | 2 | 0 |
+| 512 B | Cyclic directory chain | 4 | 4/4 | 3 | 0 | 0 | 0 | 1 |
+| 1,024 B | Cyclic directory chain | 4 | 4/4 | 3 | 0 | 0 | 0 | 1 |
+| 2,048 B | Cyclic directory chain | 4 | 4/4 | 3 | 0 | 0 | 0 | 1 |
+| 512 B | Bad-cluster link | 4 | 4/4 | 3 | 0 | 0 | 0 | 1 |
+| 1,024 B | Bad-cluster link | 4 | 4/4 | 3 | 0 | 0 | 0 | 1 |
+| 2,048 B | Bad-cluster link | 4 | 4/4 | 3 | 0 | 0 | 0 | 1 |
+
+These controls show conservative rejection on the generated images only; they do not estimate recovery rates for real FAT32 volumes.
