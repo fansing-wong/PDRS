@@ -652,6 +652,92 @@ class Fat32RecoveryTests(unittest.TestCase):
                 )
             )
 
+    def test_skips_deleted_directory_when_fat_chain_ends_in_free_cluster(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_deleted_directory_partial_chain.img"
+            make_deleted_fat32_image(image)
+            add_subdirectory_controls(image)
+            fat_offset = SECTOR_SIZE + FAT_START_SECTOR * SECTOR_SIZE
+            with image.open("r+b") as handle:
+                handle.seek(fat_offset + DELETED_DIRECTORY_CLUSTER * 4)
+                handle.write(struct.pack("<I", MULTI_CLUSTER_DIRECTORY_TAIL))
+                handle.seek(fat_offset + MULTI_CLUSTER_DIRECTORY_TAIL * 4)
+                handle.write(struct.pack("<I", 0))
+
+            result = recover_deleted_fat32(
+                image,
+                root / "recovered",
+                scan_deleted_directories=True,
+            )
+
+            self.assertFalse(any(row["parent_deleted_directory"] for row in result.rows))
+            self.assertTrue(
+                any(
+                    "directory chain contains a free, bad, or reserved cluster" in warning
+                    for warning in result.warnings
+                )
+            )
+
+    def test_recovers_deleted_file_bytes_when_lfn_slot_was_overwritten(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_deleted_directory_overwritten_lfn.img"
+            make_deleted_fat32_image(image)
+            add_subdirectory_controls(image)
+            long_name = "Deleted report from cluster chain.txt"
+            short_name = b"LONGNA~1TXT"
+            lfn_slots = _make_deleted_lfn_slots(long_name, short_name)
+            self.assertEqual(len(lfn_slots), 3)
+            hidden_payload = b"Must stay hidden inside a deleted directory.\r\n"
+            fat_offset = SECTOR_SIZE + FAT_START_SECTOR * SECTOR_SIZE
+            directory_offset = (
+                SECTOR_SIZE
+                + (DATA_START_SECTOR + DELETED_DIRECTORY_CLUSTER - 2) * SECTOR_SIZE
+            )
+            with image.open("r+b") as handle:
+                handle.seek(fat_offset + DELETED_DIRECTORY_CLUSTER * 4)
+                handle.write(struct.pack("<I", 0x0FFFFFFF))
+
+                # An intact zero-length short entry replaces the middle deleted LFN slot.
+                overwritten_slot = bytearray(32)
+                overwritten_slot[:8] = b"OVERWRTN"
+                overwritten_slot[8:11] = b"TXT"
+                overwritten_slot[11] = 0x20
+                handle.seek(directory_offset)
+                handle.write(lfn_slots[0])
+                handle.write(overwritten_slot)
+                handle.write(lfn_slots[2])
+
+                deleted_file = bytearray(32)
+                deleted_file[0] = 0xE5
+                deleted_file[1:11] = short_name[1:]
+                deleted_file[11] = 0x20
+                struct.pack_into("<H", deleted_file, 26, DELETED_DIRECTORY_FILE_CLUSTER)
+                struct.pack_into("<I", deleted_file, 28, len(hidden_payload))
+                handle.write(deleted_file)
+
+            output = root / "recovered"
+            result = recover_deleted_fat32(
+                image,
+                output,
+                scan_deleted_directories=True,
+            )
+
+            hidden_row = next(
+                row
+                for row in result.rows
+                if row["parent_deleted_directory"]
+                and row["sha256"] == hashlib.sha256(hidden_payload).hexdigest()
+            )
+            self.assertNotEqual(hidden_row["original_long_filename"], long_name)
+            self.assertEqual(hidden_row["long_filename_status"], "reconstructed_unverified")
+            self.assertIn("display name may be partial", hidden_row["validation_note"])
+            self.assertEqual(
+                (output / str(hidden_row["filename"])).read_bytes(),
+                hidden_payload,
+            )
+
     def test_reconstructs_deleted_long_filename_from_adjacent_slots(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

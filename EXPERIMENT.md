@@ -130,3 +130,18 @@ The v0.19 preparer extends the synthetic deleted-directory chain from cluster 30
 | 2,048 B | Tail cluster reused | 4 | 4/4 | 4 | 0 | 100% | 100% | 1 |
 
 These are deterministic synthetic controls, not measurements of field recovery probability. The reuse control keeps the deleted directory's earlier cluster readable while making its second cluster currently allocated to an active file; the check rejects the directory before it treats the tail cluster's active contents as directory entries.
+
+### v0.20: partial deleted-directory chains and overwritten LFN slots
+
+`run_deleted_directory_matrix_v20.py` runs two controls at 512 B, 1 KiB, and 2 KiB cluster sizes. In `partial_chain`, the deleted directory points from a readable first cluster to a second cluster whose FAT entry is free. The scanner must reject the whole directory and must not expose the readable prefix. In `lfn_slot_overwritten`, an active zero-length short entry replaces the middle slot of a three-slot deleted LFN sequence; the deleted file's short entry and payload remain intact.
+
+| Cluster size | Scenario | Expected present | Exact byte recoveries | Expected absent | False positives | Deleted-directory candidates | Target result | Recovered display name |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| 512 B | Partial directory chain | 4 | 4/4 | 3 | 0 | 0 | Correctly absent | — |
+| 1,024 B | Partial directory chain | 4 | 4/4 | 3 | 0 | 0 | Correctly absent | — |
+| 2,048 B | Partial directory chain | 4 | 4/4 | 3 | 0 | 0 | Correctly absent | — |
+| 512 B | Overwritten LFN slot | 5 | 5/5 | 3 | 0 | 1 | Exact bytes | `Deleted repor` (partial) |
+| 1,024 B | Overwritten LFN slot | 5 | 5/5 | 3 | 0 | 1 | Exact bytes | `Deleted repor` (partial) |
+| 2,048 B | Overwritten LFN slot | 5 | 5/5 | 3 | 0 | 1 | Exact bytes | `Deleted repor` (partial) |
+
+The LFN result is an intentional limitation measurement: file bytes and offset matched Ground Truth, while the display name did not. FAT32 deletion erases each deleted LFN slot's ordinal as well as the short-name first byte, so a syntactically valid partial sequence cannot be distinguished reliably from a complete one. PDRS now records that the reconstructed name is best-effort and may be partial. The results are deterministic synthetic controls, not estimates of real-media recovery rates.

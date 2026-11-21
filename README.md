@@ -107,6 +107,14 @@ v0.19 增加多簇目录、跨簇 LFN 和簇复用负向场景：
 
 多簇/LFN 场景在三种簇大小下均为 6/6 精确恢复；复用控制均拒绝与活动文件共用尾簇的已删除目录，其他 4/4 目标精确恢复。两个场景都没有误报。结果写入 `examples/fat32_deleted_directory_matrix_v19`；这仍是固定合成样本，不代表真实磁盘的恢复率。
 
+v0.20 增加不完整目录链和 LFN 槽被覆盖的对照：
+
+```powershell
+.\.venv\Scripts\python.exe .\examples\run_deleted_directory_matrix_v20.py
+```
+
+三种簇大小下，不完整目录链都被整体跳过；LFN 槽受覆盖时，文件内容仍精确恢复，但名字只重建出部分文本。清单会明确标注已删除 LFN 的重建结果为尽力推断且可能不完整。矩阵输出到 `examples/fat32_deleted_directory_matrix_v20`。
+
 SQLite 误删残留、零填充和截断场景：
 
 ```powershell

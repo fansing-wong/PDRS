@@ -1038,7 +1038,8 @@ def _recover_volume(
             "fragmented_chain_reassembled": "complete non-contiguous FAT chain was reassembled in logical order",
         }[data_layout_status]
         lfn_note = (
-            "; reconstructed LFN checksum cannot be verified because the short-name first byte was erased"
+            "; reconstructed LFN is best-effort: deletion erases the short-name first byte and LFN slot ordinals, "
+            "so its checksum and completeness cannot be verified and the display name may be partial"
             if long_name
             else ""
         )

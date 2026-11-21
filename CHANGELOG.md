@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.0 — FAT32 partial-chain and overwritten-LFN controls
+
+- Adds synthetic controls for a deleted directory whose FAT chain ends in a free cluster and for a deleted long-name slot overwritten by an active directory entry.
+- Skips the entire incomplete deleted-directory chain rather than scanning its readable prefix.
+- Makes manifests and candidate details state that reconstructed deleted LFNs are best-effort and may be partial because deletion erases slot ordinals and the short-name first byte.
+- At 512 B, 1 KiB, and 2 KiB clusters, the partial-chain control yielded zero deleted-directory candidates; the overwritten-LFN control recovered exact file bytes in all three images but reconstructed only a partial display name.
+
 ## 0.19.0 — FAT32 deleted-directory edge-case matrix
 
 - Adds a two-cluster deleted-directory fixture with deleted LFN slots at the end of the first cluster and the short entry at the start of the second.
