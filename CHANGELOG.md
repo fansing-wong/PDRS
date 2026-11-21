@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.19.0 — FAT32 deleted-directory edge-case matrix
+
+- Adds a two-cluster deleted-directory fixture with deleted LFN slots at the end of the first cluster and the short entry at the start of the second.
+- Adds a cluster-reuse control where an active file owns the deleted directory chain's tail cluster; the scanner must skip that directory.
+- Runs both scenarios at 512 B, 1 KiB, and 2 KiB clusters, with Ground Truth, SHA-256, offsets, and overlap warnings recorded.
+- All six multi-cluster/LFN variants recovered 6/6 expected files with no false positives; all three reuse variants recovered the other 4/4 expected files and rejected the reused directory chain.
+
 ## 0.18.0 — Opt-in FAT32 deleted-directory scanning
 
 - Adds an opt-in scan for direct deleted-file entries inside deleted directories whose FAT chains remain complete.

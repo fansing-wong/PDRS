@@ -20,6 +20,8 @@ SUBDIRECTORY_CLUSTER = 12
 NESTED_FILE_CLUSTER = 20
 DELETED_DIRECTORY_CLUSTER = 30
 DELETED_DIRECTORY_FILE_CLUSTER = 40
+MULTI_CLUSTER_DIRECTORY_TAIL = 32
+MULTI_CLUSTER_DELETED_FILE_CLUSTER = 33
 FAT_START_SECTOR = RESERVED_SECTORS
 DATA_START_SECTOR = RESERVED_SECTORS + SECTORS_PER_FAT
 
@@ -174,6 +176,33 @@ def _lfn_checksum(short_name: bytes) -> int:
         checksum = (((checksum & 1) << 7) | (checksum >> 1)) + byte
         checksum &= 0xFF
     return checksum
+
+
+def _make_deleted_lfn_slots(long_name: str, short_name: bytes) -> list[bytes]:
+    encoded = long_name.encode("utf-16le")
+    units = list(struct.unpack(f"<{len(encoded) // 2}H", encoded))
+    chunks = [units[index : index + 13] for index in range(0, len(units), 13)]
+    checksum = _lfn_checksum(short_name)
+    slots: list[bytes] = []
+    for sequence in range(len(chunks), 0, -1):
+        part = list(chunks[sequence - 1])
+        if sequence == len(chunks) and len(part) < 13:
+            part.append(0)
+            part.extend([0xFFFF] * (13 - len(part)))
+        part.extend([0xFFFF] * (13 - len(part)))
+        raw_units = struct.pack("<13H", *part)
+        entry = bytearray(32)
+        entry[0] = sequence | (0x40 if sequence == len(chunks) else 0)
+        entry[11] = 0x0F
+        entry[12] = 0
+        entry[13] = checksum
+        struct.pack_into("<H", entry, 26, 0)
+        entry[1:11] = raw_units[:10]
+        entry[14:26] = raw_units[10:22]
+        entry[28:32] = raw_units[22:26]
+        entry[0] = 0xE5
+        slots.append(bytes(entry))
+    return slots
 
 
 def add_deleted_lfn_to_directory(
@@ -509,6 +538,118 @@ class Fat32RecoveryTests(unittest.TestCase):
             self.assertFalse(any(row["parent_deleted_directory"] for row in result.rows))
             self.assertTrue(
                 any("active file inside a scanned deleted directory shares a cluster" in item for item in result.warnings)
+            )
+
+    def test_scans_multicluster_deleted_directory_and_reconstructs_lfn_across_cluster_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_multicluster_deleted_directory.img"
+            make_deleted_fat32_image(image)
+            add_subdirectory_controls(image)
+            long_name = "Recovered cross-cluster data report.txt"
+            short_name = b"LONGNA~1TXT"
+            lfn_slots = _make_deleted_lfn_slots(long_name, short_name)
+            self.assertEqual(len(lfn_slots), 3)
+            payload = b"The second cluster of a deleted directory contains this report.\r\n"
+            cluster_size = SECTOR_SIZE
+
+            def cluster_offset(cluster: int) -> int:
+                return SECTOR_SIZE + (DATA_START_SECTOR + cluster - 2) * cluster_size
+
+            first_directory_offset = cluster_offset(DELETED_DIRECTORY_CLUSTER)
+            second_directory_offset = cluster_offset(MULTI_CLUSTER_DIRECTORY_TAIL)
+            data_offset = cluster_offset(MULTI_CLUSTER_DELETED_FILE_CLUSTER)
+            fat_offset = SECTOR_SIZE + FAT_START_SECTOR * SECTOR_SIZE
+            with image.open("r+b") as handle:
+                handle.seek(fat_offset + DELETED_DIRECTORY_CLUSTER * 4)
+                handle.write(struct.pack("<I", MULTI_CLUSTER_DIRECTORY_TAIL))
+                handle.seek(fat_offset + MULTI_CLUSTER_DIRECTORY_TAIL * 4)
+                handle.write(struct.pack("<I", 0x0FFFFFFF))
+
+                for slot_index in range(1, cluster_size // 32 - len(lfn_slots)):
+                    filler_directory = bytearray(32)
+                    filler_directory[0] = 0xE5
+                    filler_directory[1:8] = f"FILL{slot_index:03}".encode("ascii")
+                    filler_directory[11] = 0x10
+                    handle.seek(first_directory_offset + slot_index * 32)
+                    handle.write(filler_directory)
+                first_lfn_slot = cluster_size // 32 - len(lfn_slots)
+                for relative_slot, lfn_slot in enumerate(lfn_slots):
+                    handle.seek(first_directory_offset + (first_lfn_slot + relative_slot) * 32)
+                    handle.write(lfn_slot)
+
+                deleted_file = bytearray(32)
+                deleted_file[0] = 0xE5
+                deleted_file[1:11] = short_name[1:]
+                deleted_file[11] = 0x20
+                struct.pack_into("<H", deleted_file, 26, MULTI_CLUSTER_DELETED_FILE_CLUSTER)
+                struct.pack_into("<I", deleted_file, 28, len(payload))
+                handle.seek(second_directory_offset)
+                handle.write(deleted_file)
+                handle.seek(data_offset)
+                handle.write(payload)
+            output = root / "recovered"
+
+            result = recover_deleted_fat32(
+                image,
+                output,
+                reassemble_fragmented=True,
+                scan_deleted_directories=True,
+            )
+
+            hidden_row = next(
+                row
+                for row in result.rows
+                if row["parent_deleted_directory"]
+                and row["directory_entry_offset"] == second_directory_offset
+            )
+            self.assertEqual(hidden_row["parent_directory_cluster"], DELETED_DIRECTORY_CLUSTER)
+            self.assertEqual(hidden_row["directory_cluster"], MULTI_CLUSTER_DIRECTORY_TAIL)
+            self.assertEqual(hidden_row["original_long_filename"], long_name)
+            self.assertEqual(hidden_row["long_filename_status"], "reconstructed_unverified")
+            self.assertEqual(hidden_row["offset"], data_offset)
+            self.assertEqual(hidden_row["sha256"], hashlib.sha256(payload).hexdigest())
+            self.assertEqual((output / str(hidden_row["filename"])).read_bytes(), payload)
+
+    def test_skips_multicluster_deleted_directory_when_tail_cluster_was_reused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_deleted_directory_reused_tail.img"
+            make_deleted_fat32_image(image)
+            add_subdirectory_controls(image)
+            active_payload = b"Active data reused a cluster from a deleted directory chain.\r\n"
+            root_offset = SECTOR_SIZE + DATA_START_SECTOR * SECTOR_SIZE
+            fat_offset = SECTOR_SIZE + FAT_START_SECTOR * SECTOR_SIZE
+            active_file = bytearray(32)
+            active_file[:8] = b"REUSE001"
+            active_file[8:11] = b"BIN"
+            active_file[11] = 0x20
+            struct.pack_into("<H", active_file, 26, MULTI_CLUSTER_DIRECTORY_TAIL)
+            struct.pack_into("<I", active_file, 28, len(active_payload))
+            reused_data_offset = (
+                SECTOR_SIZE
+                + (DATA_START_SECTOR + MULTI_CLUSTER_DIRECTORY_TAIL - 2) * SECTOR_SIZE
+            )
+            with image.open("r+b") as handle:
+                handle.seek(fat_offset + DELETED_DIRECTORY_CLUSTER * 4)
+                handle.write(struct.pack("<I", MULTI_CLUSTER_DIRECTORY_TAIL))
+                handle.seek(fat_offset + MULTI_CLUSTER_DIRECTORY_TAIL * 4)
+                handle.write(struct.pack("<I", 0x0FFFFFFF))
+                handle.seek(root_offset + 4 * 32)
+                handle.write(active_file)
+                handle.seek(reused_data_offset)
+                handle.write(active_payload)
+            output = root / "recovered"
+
+            result = recover_deleted_fat32(image, output, scan_deleted_directories=True)
+
+            self.assertFalse(any(row["parent_deleted_directory"] for row in result.rows))
+            self.assertTrue(
+                any(
+                    "overlaps active or already scanned cluster" in warning
+                    and str(MULTI_CLUSTER_DIRECTORY_TAIL) in warning
+                    for warning in result.warnings
+                )
             )
 
     def test_reconstructs_deleted_long_filename_from_adjacent_slots(self) -> None:

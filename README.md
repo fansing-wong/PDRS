@@ -99,6 +99,14 @@ v0.18 已删除目录直接文件扫描矩阵会自动生成三种簇大小的�
 
 矩阵输出在 `examples/fat32_deleted_directory_matrix_v18`。数据集包含四个原有恢复目标、一个已删除目录内文件目标，以及活动文件和中断链两个预期缺失控制。验证结果在三种簇大小下均为 5/5 精确恢复、0 个误报；这些数字只描述合成样本。
 
+v0.19 增加多簇目录、跨簇 LFN 和簇复用负向场景：
+
+```powershell
+.\.venv\Scripts\python.exe .\examples\run_deleted_directory_matrix_v19.py
+```
+
+多簇/LFN 场景在三种簇大小下均为 6/6 精确恢复；复用控制均拒绝与活动文件共用尾簇的已删除目录，其他 4/4 目标精确恢复。两个场景都没有误报。结果写入 `examples/fat32_deleted_directory_matrix_v19`；这仍是固定合成样本，不代表真实磁盘的恢复率。
+
 SQLite 误删残留、零填充和截断场景：
 
 ```powershell

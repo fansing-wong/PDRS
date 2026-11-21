@@ -1,10 +1,10 @@
 # Recovery scenarios and platform roadmap
 
-## Current pilot (PDRS 0.18.0)
+## Current pilot (PDRS 0.19.0)
 
 PDRS accepts regular raw image files and reads them without writing to the source. It carves contiguous BMP, JPEG, PNG, PDF, and SQLite main-database candidates. SQLite candidates up to 64 MiB receive `PRAGMA quick_check`; larger candidates receive bounded header and page-one checks, with the skipped deep check reported. The scanner does not join SQLite `-wal` files, recover deleted rows, or interpret app-specific schemas.
 
-The structure inspector reads MBR/GPT partition tables, FAT32 and exFAT boot metadata, an NTFS boot marker, and the ext-family superblock. In addition, `recover-fat32-deleted` experimentally reads deleted short-name entries from the root directory and still-active subdirectories and attempts to reconstruct adjacent deleted LFN slots. Default mode skips visible fragmented chains. The opt-in `--reassemble-fragmented` mode follows complete surviving chains and writes their clusters in logical order, but only when directory traversal and active-file allocation mapping are complete and no cluster overlaps an active directory, active file, or earlier recovered candidate. The additional opt-in `--scan-deleted-directories` mode follows complete deleted-directory chains and reads direct file entries only; it rejects overlap with active directories, active files, and previously scanned deleted directories. It is bounded to 256 directory entries and 64 MiB of deleted-directory data and does not recurse. The manifest records merged physical ranges in `source_extents`; for fragmented output, `offset` is the first extent's start and `end_offset_exclusive` is blank. If deletion cleared the FAT links, contiguous storage remains an unverified assumption. Output filenames use a sanitized LFN stem plus an entry-offset suffix; the original name is also kept in the manifest. Since deletion erases the short-name first byte, the LFN checksum cannot be fully verified against that alias. Directory traversal and cluster mapping are bounded. Other filesystem allocation records, inode tables, and file contents are not read. ext4 recognition remains metadata-only.
+The structure inspector reads MBR/GPT partition tables, FAT32 and exFAT boot metadata, an NTFS boot marker, and the ext-family superblock. In addition, `recover-fat32-deleted` experimentally reads deleted short-name entries from the root directory and still-active subdirectories and attempts to reconstruct adjacent deleted LFN slots. Default mode skips visible fragmented chains. The opt-in `--reassemble-fragmented` mode follows complete surviving chains and writes their clusters in logical order, but only when directory traversal and active-file allocation mapping are complete and no cluster overlaps an active directory, active file, or earlier recovered candidate. The additional opt-in `--scan-deleted-directories` mode follows complete deleted-directory chains and reads direct file entries only; it rejects overlap with active directories, active files, and previously scanned deleted directories. It is bounded to 256 directory entries and 64 MiB of deleted-directory data and does not recurse. The v0.19 synthetic matrix includes two-cluster deleted directories, LFN slots crossing a cluster boundary, and an active-file reuse control that confirms an overlapping directory chain is skipped. The manifest records merged physical ranges in `source_extents`; for fragmented output, `offset` is the first extent's start and `end_offset_exclusive` is blank. If deletion cleared the FAT links, contiguous storage remains an unverified assumption. Output filenames use a sanitized LFN stem plus an entry-offset suffix; the original name is also kept in the manifest. Since deletion erases the short-name first byte, the LFN checksum cannot be fully verified against that alias. Directory traversal and cluster mapping are bounded. Other filesystem allocation records, inode tables, and file contents are not read. ext4 recognition remains metadata-only.
 
 ## Reproducible deletion and damage examples
 
@@ -49,6 +49,14 @@ The v0.18 deleted-directory experiment uses isolated synthetic demo folders and 
 
 The current fixture produced five exact expected recoveries, two expected-absent controls, and zero false positives for each cluster size. This small deterministic set does not estimate field recovery rates.
 
+The v0.19 matrix adds a two-cluster deleted directory with LFN slots crossing a cluster boundary, plus a separate active-file cluster-reuse control:
+
+```powershell
+.\.venv\Scripts\python.exe .\examples\run_deleted_directory_matrix_v19.py
+```
+
+Each size recovered 6/6 positive files in the multi-cluster case. The reuse case reported one directory-chain overlap skip per image and recovered 4/4 other targets with zero false-positive candidates.
+
 The deleted short-name first character is gone; the tool uses the adjacent LFN slots for the display name, but the erased alias byte prevents full checksum verification. The command recovers bytes from the directory-entry size and first cluster. By default it scans entries in active directories only. The v0.18 `--scan-deleted-directories` option follows complete, non-overlapping deleted-directory chains and scans only their direct file entries; it does not recurse. By default it skips visible fragmentation. Its v0.17 opt-in mode reassembles a complete visible chain after checking known active and recovered cluster references; this does not prove that the chain belonged to the deleted file. Incomplete or invalid chains remain skipped, and cleared FAT links still cause a contiguous-storage assumption. It does not validate the recovered file format. Treat this as a controlled proof of concept, not a broad FAT32 recovery claim.
 
 ## Platform and filesystem plan
@@ -70,8 +78,8 @@ The current program does not open physical drives. For a later research mileston
 
 ## Suggested milestone order
 
-1. Expand v0.18 fixtures to multi-cluster deleted directories, deleted LFN slots, nested deleted subdirectories, and cluster reuse; keep skip behavior whenever ownership is ambiguous.
-2. Add FAT32 fixtures for partial-chain interruption and overlapping active-file references; report outcomes by scenario instead of generalizing from synthetic controls.
+1. Add cases where deleted directory entries or LFN slots are overwritten, and where the directory chain is partial or invalid; keep skip behavior whenever ownership is ambiguous.
+2. Expand the cluster-reuse cases to multiple currently allocated files and report outcomes per scenario instead of generalizing from synthetic controls.
 3. Add bounded NTFS MFT record inspection and separately evaluate resident versus nonresident data.
 4. Add ext4 inode/extent metadata reading, with explicit limits for journal replay and extents.
 5. Evaluate F2FS and APFS metadata as separate projects because their structures and encryption constraints differ.

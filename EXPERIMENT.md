@@ -113,3 +113,20 @@ The opt-in scanner follows a deleted directory's surviving FAT chain and checks 
 | 2,048 B | 5 | 5/5 | 2 | 0 | 100% | 100% | 100% |
 
 The deleted-directory target is one deterministic synthetic example; the v17 generator alone does not preserve its FAT chain. These results validate behavior on that fixture and its controls only, not a real-world deleted-directory recovery rate.
+
+### v0.19: multi-cluster directories, deleted LFN, and cluster reuse
+
+The v0.19 preparer extends the synthetic deleted-directory chain from cluster 30 to cluster 42 at 512 B, 1 KiB, and 2 KiB cluster sizes. For the positive scenario it fills the first directory cluster with deleted directory slots, places three deleted LFN slots at that cluster's end, and places the associated short entry at the start of the second cluster. This checks that scanning and pending LFN state continue across a FAT cluster transition. The display name is reconstructed, but its checksum cannot be verified after the first character of the short name was erased. The second scenario allocates the chain's tail cluster to an intact active file; the deleted directory must be skipped because the chain overlaps a currently allocated file.
+
+`run_deleted_directory_matrix_v19.py` creates a fresh v17-derived image for each scenario and cluster size. The multi-cluster positive case expects the four existing recovery targets plus two direct files in the deleted directory. The cluster-reuse case leaves the deleted-directory files expected absent and adds the active reused-file control. Results from the current generated matrix:
+
+| Cluster size | Scenario | Expected present | Exact | Expected absent | False positives | Precision | Recall | Deleted-dir overlap skips |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 B | Multi-cluster + LFN | 6 | 6/6 | 2 | 0 | 100% | 100% | 0 |
+| 1,024 B | Multi-cluster + LFN | 6 | 6/6 | 2 | 0 | 100% | 100% | 0 |
+| 2,048 B | Multi-cluster + LFN | 6 | 6/6 | 2 | 0 | 100% | 100% | 0 |
+| 512 B | Tail cluster reused | 4 | 4/4 | 4 | 0 | 100% | 100% | 1 |
+| 1,024 B | Tail cluster reused | 4 | 4/4 | 4 | 0 | 100% | 100% | 1 |
+| 2,048 B | Tail cluster reused | 4 | 4/4 | 4 | 0 | 100% | 100% | 1 |
+
+These are deterministic synthetic controls, not measurements of field recovery probability. The reuse control keeps the deleted directory's earlier cluster readable while making its second cluster currently allocated to an active file; the check rejects the directory before it treats the tail cluster's active contents as directory entries.
