@@ -31,6 +31,7 @@ class PDRSApp:
         self.image_path = tk.StringVar()
         self.output_path = tk.StringVar()
         self.ground_truth_path = tk.StringVar()
+        self.reassemble_fragmented = tk.BooleanVar(value=False)
         self.status = tk.StringVar(value="请选择 raw 镜像和一个空的输出目录。")
         self.file_info = tk.StringVar(value="尚未选择镜像")
         self.result_info = tk.StringVar(value="尚未运行扫描")
@@ -161,6 +162,14 @@ class PDRSApp:
         self.progress.grid(row=0, column=3, sticky="ew", padx=(16, 12))
         ttk.Label(actions, textvariable=self.status, anchor="w").grid(row=0, column=4, sticky="e")
         actions.columnconfigure(3, weight=1)
+        self.fragmented_reassembly_check = ttk.Checkbutton(
+            form,
+            text="启用完整 FAT 链碎片重组（实验；需要完整链和无活动数据冲突）",
+            variable=self.reassemble_fragmented,
+        )
+        self.fragmented_reassembly_check.grid(
+            row=7, column=0, columnspan=4, sticky="w", pady=(7, 0)
+        )
 
         results = ttk.LabelFrame(page, text="扫描结果", padding=12)
         results.grid(row=3, column=0, sticky="nsew")
@@ -409,11 +418,17 @@ class PDRSApp:
                 messagebox.showerror("Ground truth 无法使用", str(error), parent=self.root)
                 return
 
+        reassemble_fragmented = self.reassemble_fragmented.get()
+        chain_policy = (
+            "完整 FAT 链可按逻辑顺序尝试重组；活动文件分配映射不完整或发现活动目录/文件簇冲突时会跳过。"
+            if reassemble_fragmented
+            else "可见碎片链会跳过；FAT 链已清空时仍会明确标记并假定数据连续。"
+        )
         confirmed = messagebox.askyesno(
             "实验性 FAT32 恢复",
             "将只读检查 raw 镜像中 FAT32 根目录及仍可访问的子目录。\n\n"
             "仅尝试短文件名项及相邻 LFN 名称；短名首字符丢失，LFN 校验和无法完整核验。\n"
-            "可见碎片链、提前结束或无效 FAT 链会跳过；FAT 链已清空时仍假定数据连续。不进入已删除目录、不重组碎片，也不保证文件内容有效。\n"
+            f"{chain_policy} 提前结束或无效 FAT 链会跳过；不进入已删除目录，也不保证文件内容有效。\n"
             "请只对自己制作或获准检查的镜像副本操作。继续吗？",
             parent=self.root,
         )
@@ -428,13 +443,16 @@ class PDRSApp:
         self.result_info.set("FAT32 恢复进行中…")
         self.summary_info.set("")
         self.evaluation_info.set("")
-        self.details.set("实验性 FAT32 恢复扫描删除短文件名项并尝试重建相邻 LFN；FAT 链缺失时假定文件连续，可见碎片链、提前结束或无效链会跳过。")
+        self.details.set(
+            "实验性 FAT32 恢复扫描删除短文件名项并尝试重建相邻 LFN；"
+            + ("完整且无冲突的 FAT 链可按顺序重组。" if reassemble_fragmented else "可见碎片链会跳过。")
+        )
         self._clear_results()
         self._set_busy(True)
         self.status.set("正在只读检查 FAT32 目录…")
         threading.Thread(
             target=self._fat32_recovery_worker,
-            args=(source, output, ground_truth_records),
+            args=(source, output, ground_truth_records, reassemble_fragmented),
             daemon=True,
         ).start()
 
@@ -443,9 +461,12 @@ class PDRSApp:
         source: Path,
         output: Path,
         ground_truth_records: list[GroundTruthRecord] | None,
+        reassemble_fragmented: bool,
     ) -> None:
         try:
-            result = recover_deleted_fat32(source, output)
+            result = recover_deleted_fat32(
+                source, output, reassemble_fragmented=reassemble_fragmented
+            )
             manifest = write_manifest(output.resolve(), result.rows)
             evaluation: EvaluationResult | None = None
             comparison_path: Path | None = None
@@ -735,12 +756,16 @@ class PDRSApp:
             layout_status = row.get("data_layout_status")
             if layout_status == "fragmented_chain_skipped":
                 detail_lines.append("数据布局：检测到非连续 FAT 链，已跳过提取。")
+            elif layout_status == "fragmented_chain_reassembled":
+                detail_lines.append("数据布局：完整非连续 FAT 链已按逻辑顺序重组；逐段来源偏移见 manifest。")
             elif layout_status == "fat_chain_cleared":
                 detail_lines.append("数据布局：FAT 链不可用；候选数据按连续簇假设提取。")
             elif layout_status == "contiguous_fat_links":
                 detail_lines.append("数据布局：所需 FAT 链接连续；这不等于文件内容校验通过。")
             elif layout_status == "single_cluster":
                 detail_lines.append("数据布局：单簇文件。")
+            if row.get("source_extents"):
+                detail_lines.append(f"镜像来源片段：{row['source_extents']}")
         if row.get("original_long_filename"):
             detail_lines.append(f"恢复的长文件名（短名校验和无法核实）：{row['original_long_filename']}")
         elif row.get("long_filename_status") == "invalid":
@@ -846,6 +871,7 @@ class PDRSApp:
         self.run_button.configure(state=state)
         self.inspect_button.configure(state=state)
         self.recover_fat32_button.configure(state=state)
+        self.fragmented_reassembly_check.configure(state=state)
         self.image_button.configure(state=state)
         self.output_button.configure(state=state)
         self.image_paste_button.configure(state=state)

@@ -64,7 +64,8 @@ def make_deleted_fat32_image(path: Path) -> tuple[bytes, int]:
         struct.pack_into("<I", fat, 0, 0x0FFFFFF8)
         struct.pack_into("<I", fat, 4, 0x0FFFFFFF)
         struct.pack_into("<I", fat, ROOT_CLUSTER * 4, 0x0FFFFFFF)
-        struct.pack_into("<I", fat, (FILE_CLUSTER + 4) * 4, 0x0FFFFFFF)
+        struct.pack_into("<I", fat, (FILE_CLUSTER + 4) * 4, FILE_CLUSTER + 5)
+        struct.pack_into("<I", fat, (FILE_CLUSTER + 5) * 4, 0x0FFFFFFF)
         # FILE_CLUSTER is free, as expected after deletion; PDRS will assume contiguous data.
         handle.write(fat)
 
@@ -265,6 +266,77 @@ class Fat32RecoveryTests(unittest.TestCase):
             self.assertEqual(result.rows, [])
             self.assertEqual(list(output.iterdir()), [])
             self.assertTrue(any("non-contiguous FAT link" in item for item in result.warnings))
+
+    def test_opt_in_reassembles_complete_fragmented_chain_in_logical_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_fragmented_reassembly.img"
+            payload, first_offset = make_deleted_fat32_image(image)
+            fat_offset = SECTOR_SIZE + FAT_START_SECTOR * SECTOR_SIZE
+            second_cluster_offset = first_offset + 2 * SECTOR_SIZE
+            decoy_offset = first_offset + SECTOR_SIZE
+            with image.open("r+b") as handle:
+                handle.seek(fat_offset + FILE_CLUSTER * 4)
+                handle.write(struct.pack("<I", FILE_CLUSTER + 2))
+                handle.seek(fat_offset + (FILE_CLUSTER + 2) * 4)
+                handle.write(struct.pack("<I", 0x0FFFFFFF))
+                handle.seek(first_offset)
+                handle.write(payload[:SECTOR_SIZE])
+                handle.seek(decoy_offset)
+                handle.write(b"DECOY" * 100)
+                handle.seek(second_cluster_offset)
+                handle.write(payload[SECTOR_SIZE:])
+
+            output = root / "recovered"
+            result = recover_deleted_fat32(image, output, reassemble_fragmented=True)
+
+            self.assertEqual(len(result.rows), 1)
+            row = result.rows[0]
+            self.assertEqual(row["data_layout_status"], "fragmented_chain_reassembled")
+            self.assertEqual(row["offset"], first_offset)
+            self.assertIsNone(row["end_offset_exclusive"])
+            self.assertEqual(
+                row["source_extents"],
+                f"{first_offset}:{SECTOR_SIZE};{second_cluster_offset}:{len(payload) - SECTOR_SIZE}",
+            )
+            self.assertEqual((output / str(row["filename"])).read_bytes(), payload)
+
+    def test_opt_in_rejects_fragmented_chain_that_overlaps_active_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_active_overlap.img"
+            make_deleted_fat32_image(image)
+            fat_offset = SECTOR_SIZE + FAT_START_SECTOR * SECTOR_SIZE
+            with image.open("r+b") as handle:
+                handle.seek(fat_offset + FILE_CLUSTER * 4)
+                handle.write(struct.pack("<I", FILE_CLUSTER + 4))
+
+            output = root / "recovered"
+            result = recover_deleted_fat32(image, output, reassemble_fragmented=True)
+
+            self.assertEqual(result.rows, [])
+            self.assertEqual(list(output.iterdir()), [])
+            self.assertTrue(any("overlaps an active file" in item for item in result.warnings))
+
+    def test_opt_in_refuses_fragmented_reassembly_when_active_map_is_incomplete(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_incomplete_active_map.img"
+            make_deleted_fat32_image(image)
+            fat_offset = SECTOR_SIZE + FAT_START_SECTOR * SECTOR_SIZE
+            with image.open("r+b") as handle:
+                handle.seek(fat_offset + FILE_CLUSTER * 4)
+                handle.write(struct.pack("<I", FILE_CLUSTER + 2))
+                handle.seek(fat_offset + (FILE_CLUSTER + 2) * 4)
+                handle.write(struct.pack("<I", 0x0FFFFFFF))
+                handle.seek(fat_offset + (FILE_CLUSTER + 4) * 4)
+                handle.write(struct.pack("<I", 0x0FFFFFFF))
+
+            output = root / "recovered"
+            result = recover_deleted_fat32(image, output, reassemble_fragmented=True)
+
+            self.assertEqual(result.rows, [])
+            self.assertTrue(any("active-file allocation could not be mapped completely" in item for item in result.warnings))
 
     def test_records_contiguous_surviving_fat_links(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

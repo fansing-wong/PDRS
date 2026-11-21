@@ -1,0 +1,103 @@
+"""Evaluate bounded FAT32 fragmented-chain reassembly on synthetic images."""
+from __future__ import annotations
+
+import argparse
+import csv
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+from pdrs.evaluation import evaluate_ground_truth, load_ground_truth, write_evaluation
+from pdrs.fat32_recovery import recover_deleted_fat32
+from pdrs.manifest import write_manifest
+
+DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo_v17"
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--demo-dir", type=Path, default=DEFAULT_ROOT)
+    parser.add_argument("--results-dir", type=Path)
+    args = parser.parse_args()
+    root = args.demo_dir.expanduser().resolve()
+    image = root / "images" / "fat32_deleted_root.img"
+    truth = root / "ground_truth.csv"
+    results = (args.results_dir or root / "results").expanduser().resolve()
+
+    if not image.is_file() or not truth.is_file():
+        raise SystemExit("Demo is missing; run make_fat32_fragmented_demo_v17.py first.")
+    if results.exists():
+        raise SystemExit(f"Refusing to overwrite existing results: {results}")
+    results.mkdir(parents=True)
+    result = recover_deleted_fat32(image, results, reassemble_fragmented=True)
+    manifest = write_manifest(results, result.rows)
+    evaluation = evaluate_ground_truth(load_ground_truth(truth, image.name), result.rows)
+    comparison, summary = write_evaluation(results, evaluation)
+    recovered_by_name = {str(row["filename"]): row for row in result.rows}
+    name_comparison_path = results / "lfn_name_comparison.csv"
+    layout_summary_path = results / "data_layout_summary.csv"
+    name_matches = 0
+    expected_name_count = sum(bool(detail["target_present"]) for detail in evaluation.details)
+    layout_counts: dict[str, int] = {}
+    for row in result.rows:
+        layout = str(row.get("data_layout_status", "unknown"))
+        layout_counts[layout] = layout_counts.get(layout, 0) + 1
+    with name_comparison_path.open("x", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=(
+                "expected_long_filename",
+                "recovered_filename",
+                "recovered_long_filename",
+                "name_match",
+            ),
+        )
+        writer.writeheader()
+        for detail in evaluation.details:
+            recovered = recovered_by_name.get(str(detail["recovered_filename"]))
+            expected_name = Path(str(detail["source_filename"])).name
+            recovered_name = str(recovered["original_long_filename"]) if recovered else ""
+            name_match = bool(detail["target_present"]) and recovered_name.casefold() == expected_name.casefold()
+            if detail["target_present"]:
+                name_matches += int(name_match)
+            writer.writerow({
+                "expected_long_filename": expected_name,
+                "recovered_filename": str(detail["recovered_filename"]),
+                "recovered_long_filename": recovered_name,
+                "name_match": name_match,
+            })
+    with layout_summary_path.open("x", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(("data_layout_status", "candidate_count"))
+        writer.writerows(sorted(layout_counts.items()))
+    if result.warnings:
+        (results / "recovery_warnings.txt").write_text(
+            "\n".join(result.warnings) + "\n", encoding="utf-8"
+        )
+    print(f"Deleted short entries examined: {result.deleted_entries_seen}")
+    print(f"Directories scanned:            {result.directories_scanned}")
+    print(f"Recovered candidates: {len(result.rows)}")
+    print(f"LFN exact name matches: {name_matches}/{expected_name_count}")
+    for row in result.rows:
+        name = row["original_long_filename"] or row["filename"]
+        print(f"Recovered name:      {name}")
+        print(f"Data layout status:  {row['data_layout_status']}")
+    print(
+        "Exact Ground Truth:  "
+        f"{evaluation.summary['recovered_exact_count']}/{evaluation.summary['expected_present_count']}"
+    )
+    print(f"Candidate precision: {evaluation.summary['candidate_precision']}")
+    print(f"False-positive candidates: {evaluation.summary['false_positive_candidate_count']}")
+    print(f"Manifest:            {manifest}")
+    print(f"Comparison:          {comparison}")
+    print(f"Summary:             {summary}")
+    print(f"Name comparison:     {name_comparison_path}")
+    print(f"Data layout summary: {layout_summary_path}")
+    for warning in result.warnings:
+        print(f"Warning: {warning}")
+
+
+if __name__ == "__main__":
+    main()

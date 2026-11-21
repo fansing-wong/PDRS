@@ -19,6 +19,8 @@ MAX_DIRECTORY_COUNT = 4096
 MAX_DIRECTORY_DEPTH = 32
 MAX_RECOVERED_FILE_BYTES = 256 * 1024 * 1024
 MAX_TOTAL_RECOVERED_BYTES = 1024 * 1024 * 1024
+MAX_ACTIVE_FILE_REFERENCE_CLUSTERS = 1_000_000
+MAX_RECOVERED_CLUSTER_REFERENCES = 1_000_000
 MAX_CANDIDATES = 10000
 MAX_WARNINGS = 100
 MAX_LFN_ENTRIES = 20
@@ -90,6 +92,117 @@ def _fat_data_layout(
             return "fragmented_chain_skipped"
         current = next_cluster
     return "contiguous_fat_links"
+
+
+def _fat_chain_layout(
+    image: mmap.mmap,
+    *,
+    fat_start: int,
+    fat_bytes: int,
+    first_cluster: int,
+    required_clusters: int,
+    cluster_count: int,
+) -> tuple[str, list[int]]:
+    """Return the bounded FAT chain needed for a file's declared byte length."""
+    if required_clusters <= 0:
+        return "zero_length", []
+    if first_cluster < 2 or first_cluster >= cluster_count + 2:
+        return "invalid_fat_chain_skipped", []
+    if required_clusters == 1:
+        return "single_cluster", [first_cluster]
+    chain = [first_cluster]
+    seen = {first_cluster}
+    fragmented = False
+    current = first_cluster
+    for _ in range(required_clusters - 1):
+        try:
+            next_cluster = _fat_entry(image, fat_start, fat_bytes, current)
+        except ValueError:
+            return "invalid_fat_chain_skipped", chain
+        if next_cluster in (0, 1):
+            if fragmented:
+                return "fragmented_chain_incomplete_skipped", chain
+            return "fat_chain_cleared", chain
+        if next_cluster >= FAT32_EOC_MIN:
+            return "truncated_fat_chain_skipped", chain
+        if next_cluster == FAT32_BAD_CLUSTER or 0x0FFFFFF0 <= next_cluster < FAT32_EOC_MIN:
+            return "invalid_fat_chain_skipped", chain
+        if next_cluster < 2 or next_cluster >= cluster_count + 2 or next_cluster in seen:
+            return "invalid_fat_chain_skipped", chain
+        fragmented |= next_cluster != current + 1
+        chain.append(next_cluster)
+        seen.add(next_cluster)
+        current = next_cluster
+    if len(chain) != required_clusters:
+        return "invalid_fat_chain_skipped", chain
+    return ("fragmented_chain_reassembled" if fragmented else "contiguous_fat_links"), chain
+
+
+def _active_file_cluster_map(
+    image: mmap.mmap,
+    *,
+    fat_start: int,
+    fat_bytes: int,
+    cluster_count: int,
+    cluster_size: int,
+    file_entries: list[tuple[int, int, int]],
+) -> tuple[set[int], bool, list[str]]:
+    """Map clusters referenced by active regular files, within a fixed memory bound."""
+    clusters: set[int] = set()
+    warnings: list[str] = []
+    complete = True
+    references = 0
+    for entry_offset, first_cluster, file_size in file_entries:
+        required = (file_size + cluster_size - 1) // cluster_size
+        if required <= 0:
+            continue
+        if required > MAX_ACTIVE_FILE_REFERENCE_CLUSTERS - references:
+            complete = False
+            _add_warning(
+                warnings,
+                f"Active-file FAT mapping exceeded the {MAX_ACTIVE_FILE_REFERENCE_CLUSTERS:,}-cluster safety limit; fragmented reassembly is disabled.",
+            )
+            break
+        status, chain = _fat_chain_layout(
+            image,
+            fat_start=fat_start,
+            fat_bytes=fat_bytes,
+            first_cluster=first_cluster,
+            required_clusters=required,
+            cluster_count=cluster_count,
+        )
+        if status not in {"single_cluster", "contiguous_fat_links", "fragmented_chain_reassembled"}:
+            complete = False
+            _add_warning(
+                warnings,
+                f"Active file at directory entry {entry_offset} could not be mapped completely ({status}); fragmented reassembly is disabled.",
+            )
+            continue
+        clusters.update(chain)
+        references += len(chain)
+    return clusters, complete, warnings
+
+
+def _source_extents(
+    clusters: list[int], *, file_size: int, cluster_size: int, data_start: int, data_end: int
+) -> list[tuple[int, int]] | None:
+    """Convert logical cluster order into merged physical (offset, length) extents."""
+    remaining = file_size
+    extents: list[tuple[int, int]] = []
+    for cluster in clusters:
+        if remaining <= 0:
+            break
+        offset = data_start + (cluster - 2) * cluster_size
+        length = min(cluster_size, remaining)
+        if offset < data_start or offset + length > data_end:
+            return None
+        if extents and extents[-1][0] + extents[-1][1] == offset:
+            previous_offset, previous_length = extents[-1]
+            extents[-1] = (previous_offset, previous_length + length)
+        else:
+            extents.append((offset, length))
+        remaining -= length
+    return extents if remaining == 0 else None
 
 
 def _directory_chain(
@@ -293,6 +406,8 @@ def _recover_volume(
     partition_number: int,
     output: Path,
     rows: list[dict[str, Any]],
+    *,
+    reassemble_fragmented: bool = False,
 ) -> tuple[int, list[str], int, int]:
     warnings: list[str] = []
     geometry = _volume_geometry(image, volume, available_bytes)
@@ -310,6 +425,7 @@ def _recover_volume(
     candidate_limit_reported = False
     directory_scan_complete = True
     deleted_entries: list[tuple[int, int, int, bytes, str | None, str]] = []
+    active_file_entries: list[tuple[int, int, int]] = []
 
     while pending_directories:
         directory_start, depth = pending_directories.popleft()
@@ -404,9 +520,14 @@ def _recover_volume(
                     continue
 
                 pending_lfn_slots.clear()
-                if attributes == 0x0F or not attributes & 0x10 or attributes & 0x08 or _is_dot_directory(entry):
+                if attributes == 0x0F or attributes & 0x08 or _is_dot_directory(entry):
                     continue
                 child_cluster = _entry_cluster(entry)
+                if not attributes & 0x10:
+                    active_file_size = struct.unpack_from("<I", entry, 28)[0]
+                    if active_file_size:
+                        active_file_entries.append((entry_offset, child_cluster, active_file_size))
+                    continue
                 if child_cluster < 2 or child_cluster >= geometry["cluster_count"] + 2:
                     _add_warning(
                         warnings,
@@ -441,6 +562,19 @@ def _recover_volume(
         return deleted_seen, warnings, scanned_directory_count, total_directory_bytes
 
     sorted_directory_clusters = sorted(scanned_directory_clusters)
+    active_file_clusters: set[int] = set()
+    active_file_map_complete = True
+    recovered_data_clusters: set[int] = set()
+    if reassemble_fragmented:
+        active_file_clusters, active_file_map_complete, map_warnings = _active_file_cluster_map(
+            image,
+            fat_start=geometry["fat_start"],
+            fat_bytes=geometry["fat_bytes"],
+            cluster_count=geometry["cluster_count"],
+            cluster_size=cluster_size,
+            file_entries=active_file_entries,
+        )
+        warnings.extend(map_warnings)
     for entry_offset, directory_cluster, depth, entry, long_name, long_name_status in deleted_entries:
         if len(rows) >= MAX_CANDIDATES:
             _add_warning(warnings, f"Stopped after the {MAX_CANDIDATES}-candidate safety limit.")
@@ -457,75 +591,161 @@ def _recover_volume(
         if total_recovered_bytes + file_size > MAX_TOTAL_RECOVERED_BYTES:
             _add_warning(warnings, "Stopped before exceeding the 1 GiB total-recovery safety limit.")
             break
+        data_clusters: list[int] = []
         if file_size == 0:
             data_offset = geometry["data_start"]
             data_layout_status = "zero_length"
+            source_extents: list[tuple[int, int]] = []
         else:
             if first_cluster < 2 or first_cluster >= geometry["cluster_count"] + 2:
                 _add_warning(warnings, f"Deleted entry at {entry_offset} has an invalid first cluster; skipped.")
                 continue
             required_clusters = (file_size + cluster_size - 1) // cluster_size
-            data_layout_status = _fat_data_layout(
-                image,
-                fat_start=geometry["fat_start"],
-                fat_bytes=geometry["fat_bytes"],
-                first_cluster=first_cluster,
-                required_clusters=required_clusters,
-                cluster_count=geometry["cluster_count"],
-            )
-            if data_layout_status in {
-                "fragmented_chain_skipped",
-                "truncated_fat_chain_skipped",
-                "invalid_fat_chain_skipped",
-            }:
-                reason = {
-                    "fragmented_chain_skipped": "a visible non-contiguous FAT link",
-                    "truncated_fat_chain_skipped": "a FAT end marker before the declared file size",
-                    "invalid_fat_chain_skipped": "an invalid FAT link",
-                }[data_layout_status]
-                _add_warning(
-                    warnings,
-                    f"Deleted entry at {entry_offset} has {reason}; skipped instead of assuming a contiguous range.",
+            if reassemble_fragmented:
+                data_layout_status, observed_chain = _fat_chain_layout(
+                    image,
+                    fat_start=geometry["fat_start"],
+                    fat_bytes=geometry["fat_bytes"],
+                    first_cluster=first_cluster,
+                    required_clusters=required_clusters,
+                    cluster_count=geometry["cluster_count"],
                 )
-                continue
-            data_offset = geometry["data_start"] + (first_cluster - 2) * cluster_size
-            data_end = data_offset + file_size
-            if data_end > geometry["data_end"] or data_end > len(image):
-                _add_warning(warnings, f"Deleted entry at {entry_offset} exceeds the contiguous data region; skipped.")
-                continue
-            end_cluster = first_cluster + (file_size + cluster_size - 1) // cluster_size
-            overlap_index = bisect_left(sorted_directory_clusters, first_cluster)
-            if (
-                overlap_index < len(sorted_directory_clusters)
-                and sorted_directory_clusters[overlap_index] < end_cluster
-            ):
-                _add_warning(
-                    warnings,
-                    f"Deleted entry at {entry_offset} overlaps an active directory cluster; skipped.",
+                if data_layout_status == "fat_chain_cleared":
+                    if first_cluster + required_clusters > geometry["cluster_count"] + 2:
+                        _add_warning(warnings, f"Deleted entry at {entry_offset} exceeds the contiguous data region; skipped.")
+                        continue
+                    data_clusters = list(range(first_cluster, first_cluster + required_clusters))
+                elif data_layout_status in {
+                    "fragmented_chain_incomplete_skipped",
+                    "truncated_fat_chain_skipped",
+                    "invalid_fat_chain_skipped",
+                }:
+                    _add_warning(
+                        warnings,
+                        f"Deleted entry at {entry_offset} has an incomplete or invalid FAT chain ({data_layout_status}); skipped.",
+                    )
+                    continue
+                else:
+                    data_clusters = observed_chain
+                if data_layout_status == "fragmented_chain_reassembled" and not active_file_map_complete:
+                    _add_warning(
+                        warnings,
+                        f"Deleted entry at {entry_offset} has a fragmented chain, but active-file allocation could not be mapped completely; skipped.",
+                    )
+                    continue
+                if len(recovered_data_clusters) + len(data_clusters) > MAX_RECOVERED_CLUSTER_REFERENCES:
+                    _add_warning(
+                        warnings,
+                        f"Stopped before exceeding the {MAX_RECOVERED_CLUSTER_REFERENCES:,}-cluster overlap-tracking limit.",
+                    )
+                    break
+                conflict = next(
+                    (
+                        cluster
+                        for cluster in data_clusters
+                        if cluster in scanned_directory_clusters
+                        or cluster in active_file_clusters
+                        or cluster in recovered_data_clusters
+                    ),
+                    None,
                 )
-                continue
+                if conflict is not None:
+                    if conflict in scanned_directory_clusters:
+                        conflict_kind = "an active directory"
+                    elif conflict in active_file_clusters:
+                        conflict_kind = "an active file"
+                    else:
+                        conflict_kind = "another recovered candidate"
+                    _add_warning(
+                        warnings,
+                        f"Deleted entry at {entry_offset} overlaps {conflict_kind} cluster {conflict}; skipped.",
+                    )
+                    continue
+                source_extents = _source_extents(
+                    data_clusters,
+                    file_size=file_size,
+                    cluster_size=cluster_size,
+                    data_start=geometry["data_start"],
+                    data_end=geometry["data_end"],
+                )
+                if source_extents is None:
+                    _add_warning(warnings, f"Deleted entry at {entry_offset} exceeds the data region; skipped.")
+                    continue
+            else:
+                data_layout_status = _fat_data_layout(
+                    image,
+                    fat_start=geometry["fat_start"],
+                    fat_bytes=geometry["fat_bytes"],
+                    first_cluster=first_cluster,
+                    required_clusters=required_clusters,
+                    cluster_count=geometry["cluster_count"],
+                )
+                if data_layout_status in {
+                    "fragmented_chain_skipped",
+                    "truncated_fat_chain_skipped",
+                    "invalid_fat_chain_skipped",
+                }:
+                    reason = {
+                        "fragmented_chain_skipped": "a visible non-contiguous FAT link",
+                        "truncated_fat_chain_skipped": "a FAT end marker before the declared file size",
+                        "invalid_fat_chain_skipped": "an invalid FAT link",
+                    }[data_layout_status]
+                    _add_warning(
+                        warnings,
+                        f"Deleted entry at {entry_offset} has {reason}; skipped instead of assuming a contiguous range.",
+                    )
+                    continue
+                data_offset = geometry["data_start"] + (first_cluster - 2) * cluster_size
+                data_end = data_offset + file_size
+                if data_end > geometry["data_end"] or data_end > len(image):
+                    _add_warning(warnings, f"Deleted entry at {entry_offset} exceeds the contiguous data region; skipped.")
+                    continue
+                end_cluster = first_cluster + required_clusters
+                overlap_index = bisect_left(sorted_directory_clusters, first_cluster)
+                if (
+                    overlap_index < len(sorted_directory_clusters)
+                    and sorted_directory_clusters[overlap_index] < end_cluster
+                ):
+                    _add_warning(
+                        warnings,
+                        f"Deleted entry at {entry_offset} overlaps an active directory cluster; skipped.",
+                    )
+                    continue
+                source_extents = [(data_offset, file_size)]
+
+        data_offset = source_extents[0][0] if source_extents else geometry["data_start"]
+        end_offset_exclusive = (
+            data_offset + file_size if file_size == 0 or len(source_extents) == 1 else None
+        )
 
         filename = _candidate_filename(long_name, extension, partition_number, entry_offset)
         target = output / filename
-        view = memoryview(image)[data_offset : data_offset + file_size]
-        digest = hashlib.sha256(view).hexdigest()
+        digest = hashlib.sha256()
         try:
             with target.open("xb") as handle:
-                handle.write(view)
+                for extent_offset, extent_length in source_extents:
+                    view = memoryview(image)[extent_offset : extent_offset + extent_length]
+                    try:
+                        digest.update(view)
+                        handle.write(view)
+                    finally:
+                        view.release()
         except Exception:
             try:
                 target.unlink(missing_ok=True)
             except OSError:
                 pass
             raise
-        finally:
-            view.release()
+        digest_hex = digest.hexdigest()
         total_recovered_bytes += file_size
+        if reassemble_fragmented:
+            recovered_data_clusters.update(data_clusters)
         layout_note = {
             "zero_length": "zero-length file; no data bytes were read",
             "single_cluster": "single-cluster file",
             "contiguous_fat_links": "FAT links for the declared size are contiguous",
             "fat_chain_cleared": "FAT links are cleared; contiguous storage was assumed",
+            "fragmented_chain_reassembled": "complete non-contiguous FAT chain was reassembled in logical order",
         }[data_layout_status]
         lfn_note = (
             "; reconstructed LFN checksum cannot be verified because the short-name first byte was erased"
@@ -536,14 +756,17 @@ def _recover_volume(
             "filename": filename,
             "format": extension[1:],
             "offset": data_offset,
-            "end_offset_exclusive": data_offset + file_size,
+            "end_offset_exclusive": end_offset_exclusive,
             "size_bytes": file_size,
             "complete_boundary": True,
             "format_valid": None,
             "validation_note": (
                 f"Experimental FAT32 deleted short entry; {layout_note}; file format not validated{lfn_note}"
             ),
-            "sha256": digest,
+            "sha256": digest_hex,
+            "source_extents": ";".join(
+                f"{extent_offset}:{extent_length}" for extent_offset, extent_length in source_extents
+            ),
             "partition_number": partition_number,
             "directory_entry_offset": entry_offset,
             "directory_cluster": directory_cluster,
@@ -557,12 +780,18 @@ def _recover_volume(
     return deleted_seen, warnings, scanned_directory_count, total_directory_bytes
 
 
-def recover_deleted_fat32(image_path: Path, output_dir: Path) -> Fat32RecoveryResult:
+def recover_deleted_fat32(
+    image_path: Path,
+    output_dir: Path,
+    *,
+    reassemble_fragmented: bool = False,
+) -> Fat32RecoveryResult:
     """Recover deleted short-file entries from FAT32 root and active subdirectories.
 
     The source must be a regular raw image file. The image is memory-mapped read-only.
-    This experimental version assumes each file's data occupies contiguous clusters;
-    deleted directories are not traversed; LFN reconstruction is best-effort.
+    Fragmented-chain reassembly is opt-in and requires complete surviving FAT links
+    plus a complete active-file allocation map. Deleted directories are not traversed;
+    LFN reconstruction is best-effort.
     """
     source = image_path.expanduser().resolve(strict=True)
     source_stat = source.stat()
@@ -604,7 +833,13 @@ def recover_deleted_fat32(image_path: Path, output_dir: Path) -> Fat32RecoveryRe
                     partition_number = partition.number
                 try:
                     seen, volume_warnings, scanned_dirs, scanned_bytes = _recover_volume(
-                        image, volume, available, partition_number, destination, rows
+                        image,
+                        volume,
+                        available,
+                        partition_number,
+                        destination,
+                        rows,
+                        reassemble_fragmented=reassemble_fragmented,
                     )
                     deleted_entries_seen += seen
                     directories_scanned += scanned_dirs

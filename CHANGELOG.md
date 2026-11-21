@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.0 — Opt-in FAT32 fragmented-chain reassembly
+
+- Adds an opt-in recovery mode that follows complete surviving FAT chains and writes clusters in logical file order.
+- Records merged physical source extents in the manifest; the ordinary byte offset remains the first extent's image offset.
+- Requires complete active-file allocation mapping before reassembling fragmented candidates and rejects overlaps with active directories, active files, or already recovered candidates.
+- Keeps incomplete, truncated, cyclic, invalid, and malformed chains skipped; cleared FAT links retain the explicitly labelled contiguous-data assumption.
+- Adds a synthetic three-cluster-size matrix with one positive fragmented file plus active-file, deleted-directory, and interrupted-chain absence controls.
+
 ## 0.16.0 — FAT32 cluster-size matrix
 
 - Extends the synthetic deleted-entry dataset to support 512 B, 1 KiB, and 2 KiB clusters.

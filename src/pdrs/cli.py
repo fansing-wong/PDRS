@@ -35,10 +35,17 @@ def recover_fat32_deleted(
     ground_truth: Path | None = typer.Option(
         None, "--ground-truth", exists=True, readable=True, help="Optional Ground Truth CSV for hash/offset comparison"
     ),
+    reassemble_fragmented: bool = typer.Option(
+        False,
+        "--reassemble-fragmented",
+        help="Opt in to reassembling complete surviving FAT chains after active-file overlap checks.",
+    ),
 ) -> None:
-    """Experimental: recover deleted FAT32 entries; skip candidates with visible fragmented FAT links."""
+    """Experimental: recover deleted FAT32 entries; fragmented-chain reassembly is opt-in."""
     try:
-        result = recover_deleted_fat32(image, output)
+        result = recover_deleted_fat32(
+            image, output, reassemble_fragmented=reassemble_fragmented
+        )
         manifest = write_manifest(output, result.rows)
         evaluation = None
         if ground_truth is not None:

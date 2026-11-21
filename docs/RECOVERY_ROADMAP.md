@@ -1,10 +1,10 @@
 # Recovery scenarios and platform roadmap
 
-## Current pilot (PDRS 0.16.0)
+## Current pilot (PDRS 0.17.0)
 
 PDRS accepts regular raw image files and reads them without writing to the source. It carves contiguous BMP, JPEG, PNG, PDF, and SQLite main-database candidates. SQLite candidates up to 64 MiB receive `PRAGMA quick_check`; larger candidates receive bounded header and page-one checks, with the skipped deep check reported. The scanner does not join SQLite `-wal` files, recover deleted rows, or interpret app-specific schemas.
 
-The structure inspector reads MBR/GPT partition tables, FAT32 and exFAT boot metadata, an NTFS boot marker, and the ext-family superblock. In addition, `recover-fat32-deleted` experimentally reads deleted short-name entries from the root directory and still-active subdirectories, attempts to reconstruct adjacent deleted LFN slots, then extracts each file from a contiguous data range. If a surviving FAT link needed for the declared size jumps to a non-adjacent cluster, ends prematurely, or is invalid, extraction is skipped. If deletion cleared the FAT links, contiguous storage remains an unverified assumption. Output filenames use a sanitized LFN stem plus an entry-offset suffix; the original name is also kept in the manifest. Since deletion erases the short-name first byte, the LFN checksum cannot be fully verified against that alias. The tool does not enter deleted directories or reassemble fragmented files. Directory traversal is bounded by depth, count, and total bytes. When traversal is incomplete, extraction stops for that volume; candidate ranges overlapping scanned active directory clusters are skipped. Other filesystem allocation records, inode tables, and file contents are not read. ext4 recognition remains metadata-only.
+The structure inspector reads MBR/GPT partition tables, FAT32 and exFAT boot metadata, an NTFS boot marker, and the ext-family superblock. In addition, `recover-fat32-deleted` experimentally reads deleted short-name entries from the root directory and still-active subdirectories and attempts to reconstruct adjacent deleted LFN slots. Default mode skips visible fragmented chains. The opt-in `--reassemble-fragmented` mode follows complete surviving chains and writes their clusters in logical order, but only when directory traversal and active-file allocation mapping are complete and no cluster overlaps an active directory, active file, or earlier recovered candidate. The manifest records merged physical ranges in `source_extents`; for fragmented output, `offset` is the first extent's start and `end_offset_exclusive` is blank. If deletion cleared the FAT links, contiguous storage remains an unverified assumption. Output filenames use a sanitized LFN stem plus an entry-offset suffix; the original name is also kept in the manifest. Since deletion erases the short-name first byte, the LFN checksum cannot be fully verified against that alias. The tool does not enter deleted directories. Directory traversal and cluster mapping are bounded. Other filesystem allocation records, inode tables, and file contents are not read. ext4 recognition remains metadata-only.
 
 ## Reproducible deletion and damage examples
 
@@ -25,7 +25,7 @@ Each result folder contains a manifest and Ground Truth comparison. The exact ha
 
 ## FAT32 deleted-entry pilot
 
-`examples/make_fat32_deleted_demo.py` builds a synthetic MBR/FAT32 image with deleted 8.3 entries and LFN slots, plus zero-length, positive multi-cluster, active-file, deleted-directory, visible-fragmentation, and interrupted-chain controls. It accepts 1, 2, or 4 sectors per cluster. Run `examples/run_fat32_layout_matrix_v16.py` to create 512 B, 1 KiB, and 2 KiB cluster variants and aggregate the Ground Truth metrics into `matrix_summary.csv`; per-image detail stays in each scenario folder.
+`examples/make_fat32_deleted_demo.py` and `examples/run_fat32_layout_matrix_v16.py` preserve the v0.16 controls. The v0.17 scripts use a separate fixture with a positive complete fragmented-chain case plus active-file, deleted-directory, and interrupted-chain absence controls. Both matrices cover 512 B, 1 KiB, and 2 KiB clusters and aggregate Ground Truth metrics into `matrix_summary.csv`.
 
 ```powershell
 .\.venv\Scripts\python.exe .\examples\make_fat32_deleted_demo.py --output-dir .\examples\fat32_deleted_demo_v16 --sectors-per-cluster 1
@@ -33,7 +33,15 @@ Each result folder contains a manifest and Ground Truth comparison. The exact ha
 .\.venv\Scripts\python.exe .\examples\run_fat32_layout_matrix_v16.py
 ```
 
-The deleted short-name first character is gone; the tool uses the adjacent LFN slots for the display name, but the erased alias byte prevents full checksum verification. The command recovers bytes from the directory-entry size and first cluster. It only finds entries inside directories whose own chains remain active; it cannot traverse a deleted directory. It skips files if visible FAT links show fragmentation, end before the declared size, or are invalid; it assumes contiguous storage if deletion cleared the FAT chain. It does not validate the recovered file format. Treat this as a controlled proof of concept, not a broad FAT32 recovery claim.
+The v0.17 opt-in reassembly experiment is separate:
+
+```powershell
+.\.venv\Scripts\python.exe .\examples\make_fat32_fragmented_demo_v17.py --output-dir .\examples\fat32_deleted_demo_v17 --sectors-per-cluster 1
+.\.venv\Scripts\python.exe .\examples\run_fat32_fragmented_demo_v17.py --demo-dir .\examples\fat32_deleted_demo_v17
+.\.venv\Scripts\python.exe .\examples\run_fat32_layout_matrix_v17.py
+```
+
+The deleted short-name first character is gone; the tool uses the adjacent LFN slots for the display name, but the erased alias byte prevents full checksum verification. The command recovers bytes from the directory-entry size and first cluster. It only finds entries inside directories whose own chains remain active; it cannot traverse a deleted directory. By default it skips visible fragmentation. Its v0.17 opt-in mode reassembles a complete visible chain after checking known active and recovered cluster references; this does not prove that the chain belonged to the deleted file. Incomplete or invalid chains remain skipped, and cleared FAT links still cause a contiguous-storage assumption. It does not validate the recovered file format. Treat this as a controlled proof of concept, not a broad FAT32 recovery claim.
 
 ## Platform and filesystem plan
 
@@ -41,7 +49,7 @@ Operating system names are not filesystem formats. Recovery depends on the files
 
 | Platform | Common formats or data | Current PDRS status | Next research step |
 | --- | --- | --- | --- |
-| Windows | NTFS, FAT32, exFAT; SQLite app databases | Experimental FAT32 root/subdirectory 8.3 and adjacent LFN deleted-entry extraction; visible fragmented, prematurely ended, or invalid chains are skipped, cleared chains still use a contiguous-data assumption; FAT32/exFAT boot metadata; NTFS marker only | Expand multi-cluster cases across cluster sizes; then synthetic NTFS MFT experiments |
+| Windows | NTFS, FAT32, exFAT; SQLite app databases | Experimental FAT32 root/subdirectory 8.3 and adjacent LFN deleted-entry extraction; opt-in complete-chain fragmented reassembly with allocation-overlap checks; cleared chains still use a contiguous-data assumption; FAT32/exFAT boot metadata; NTFS marker only | Evaluate partial-chain and allocation-reuse cases; then synthetic NTFS MFT experiments |
 | Linux | ext4, XFS, Btrfs; SQLite app databases | ext superblock recognition; no directory or inode recovery | Add ext4 inode and extent metadata inspection, starting read-only on synthetic images |
 | Android | ext4 or F2FS userdata; SQLite app databases | ext superblock recognition where ext4 is used; no F2FS or Android app parser | Add F2FS metadata research and export-based SQLite experiments; encryption/key availability must be recorded |
 | Apple | APFS, HFS+; app databases | No APFS/HFS+ parser; generic SQLite carving only when an accessible image contains plaintext bytes | Start with read-only APFS container/volume metadata; encrypted volumes require authorized unlocked/exported data |
@@ -54,8 +62,8 @@ The current program does not open physical drives. For a later research mileston
 
 ## Suggested milestone order
 
-1. Add zero-length FAT32 cases and repeat contiguous/interrupted samples across several cluster sizes; report byte-level recovery and false-positive rates.
-2. Expand FAT32 layout evaluation across partially surviving chains and cleared chains; do not silently claim fragmented recovery.
+1. Run the v0.17 matrix at each supported cluster size and review byte-level recovery, extent metadata, and all three expected-absent controls.
+2. Add FAT32 fixtures for partial-chain interruption, cluster reuse after deletion, and overlapping active-file references; retain skip behavior whenever ownership is ambiguous.
 3. Add bounded NTFS MFT record inspection and separately evaluate resident versus nonresident data.
 4. Add ext4 inode/extent metadata reading, with explicit limits for journal replay and extents.
 5. Evaluate F2FS and APFS metadata as separate projects because their structures and encryption constraints differ.

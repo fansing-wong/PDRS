@@ -2,13 +2,13 @@
 
 PDRS（Personal Data Recovery Study）是一个面向可重复实验的只读恢复原型。它扫描用户明确选择的普通 raw 镜像文件，支持 BMP、JPEG、PNG、PDF、SQLite 连续雕刻，并提供实验性的 FAT32 误删文件提取。
 
-> **范围说明：** 程序只处理常规镜像文件，不访问物理磁盘或系统实时设备。FAT32 误删恢复扫描根目录及仍可访问的活动子目录中的删除短文件名项，并尝试从相邻 LFN 槽恢复显示名称；若现存 FAT 链显示碎片、提前结束或无效链，会跳过该文件；若删除后 FAT 链已清空，则仍只能按连续存储假设提取。删除短名首字符已丢失，因此 LFN 校验和无法完整核验；不进入已删除目录、不重组碎片。它不是生产级数据恢复软件；请仅处理自己制作或获准检查的镜像副本。
+> **范围说明：** 程序只处理常规镜像文件，不访问物理磁盘或系统实时设备。FAT32 误删恢复扫描根目录及仍可访问的活动子目录中的删除短文件名项，并尝试从相邻 LFN 槽恢复显示名称；默认跳过可见碎片链，显式启用实验选项后才尝试重组完整 FAT 链。重组需要完整的活动文件分配映射，并拒绝与活动目录、活动文件或其他候选共用簇的文件。若删除后 FAT 链已清空，仍只能按连续存储假设提取。删除短名首字符已丢失，因此 LFN 校验和无法完整核验；不进入已删除目录。它不是生产级数据恢复软件；请仅处理自己制作或获准检查的镜像副本。
 
 ## 功能
 
 - 只读 `mmap` 扫描普通镜像；候选文件和报告写入独立目录。
 - 连续文件雕刻：BMP、JPEG、PNG、PDF、SQLite 主数据库。SQLite 候选不超过 64 MiB 时运行 `PRAGMA quick_check`；更大的候选会跳过完整检查并标记。
-- **实验性 FAT32 误删恢复**：读取卷的第一张 FAT，扫描根目录和活动子目录的簇链，提取删除项并尝试重建 LFN 显示名；输出名经过安全处理且带偏移标识。遇到可见的碎片链、提前结束或无效 FAT 链会拒绝连续提取；FAT 链已清空时仍按连续簇假设，不做格式验证，并报告扫描目录数和字节数。
+- **实验性 FAT32 误删恢复**：读取卷的第一张 FAT，扫描根目录和活动子目录的簇链，提取删除项并尝试重建 LFN 显示名；输出名经过安全处理且带偏移标识。默认跳过可见碎片链；显式启用重组后，仅在完整链和活动文件分配映射均可确认且无簇冲突时按逻辑顺序读取。FAT 链已清空时仍按连续簇假设，不做格式验证，并报告扫描目录数和字节数。
 - 镜像结构只读检查 MBR/GPT、FAT32/exFAT 引导参数、ext 超级块和 NTFS 引导标记。
 - Tkinter 图形界面、Ground Truth 对照、SHA-256、CSV manifest 和 Markdown 扫描报告。
 
@@ -47,6 +47,14 @@ python -m venv .venv
 .\.venv\Scripts\pdrs.exe recover-fat32-deleted .\fat32.img .\fat32_recovered --ground-truth .\ground_truth.csv
 ```
 
+完整 FAT 链碎片重组为可选实验模式：
+
+```powershell
+.\.venv\Scripts\pdrs.exe recover-fat32-deleted .\fat32.img .\fat32_reassembled --ground-truth .\ground_truth.csv --reassemble-fragmented
+```
+
+此模式会拒绝与活动目录、活动文件或其他恢复候选共用簇的数据。manifest 的 `source_extents` 列列出镜像物理片段（`offset:length`，分号分隔）；碎片文件的 `offset` 是首段起点，`end_offset_exclusive` 留空。
+
 输出目录不存在时会创建；已存在时必须为空。程序不会覆盖已有结果。输入镜像以只读方式打开。
 
 启动图形界面：
@@ -57,7 +65,7 @@ python -m venv .venv
 
 ## 合成实验
 
-FAT32 单簇样本和布局矩阵（512 B、1 KiB、2 KiB 簇），覆盖零长度文件、连续多簇、碎片链、中断链和目录负向对照：
+FAT32 v0.16 历史矩阵（512 B、1 KiB、2 KiB 簇）：
 
 ```powershell
 .\.venv\Scripts\python.exe .\examples\make_fat32_deleted_demo.py --output-dir .\examples\fat32_deleted_demo_v16 --sectors-per-cluster 1
@@ -66,6 +74,14 @@ FAT32 单簇样本和布局矩阵（512 B、1 KiB、2 KiB 簇），覆盖零长�
 ```
 
 单次演示分别报告 SHA-256/偏移精确匹配和 LFN 名称匹配；矩阵结果汇总到 `matrix_summary.csv`，逐样本数据布局计数写入 `data_layout_summary.csv`。
+
+v0.17 可选碎片重组矩阵新增一个完整碎片链正向样本，以及活动文件、已删除目录和中断链负向样本：
+
+```powershell
+.\.venv\Scripts\python.exe .\examples\make_fat32_fragmented_demo_v17.py --output-dir .\examples\fat32_deleted_demo_v17 --sectors-per-cluster 1
+.\.venv\Scripts\python.exe .\examples\run_fat32_fragmented_demo_v17.py --demo-dir .\examples\fat32_deleted_demo_v17
+.\.venv\Scripts\python.exe .\examples\run_fat32_layout_matrix_v17.py
+```
 
 SQLite 误删残留、零填充和截断场景：
 
@@ -94,11 +110,11 @@ GitHub Actions 在 Windows 与 Ubuntu 上使用 Python 3.12、3.13 执行单元�
 ## 局限性
 
 - FAT32 删除项恢复扫描根目录和活动子目录中的短文件名项；可从相邻删除 LFN 槽重建显示名，但因短名首字符丢失无法完整核验校验和。目录树扫描不完整时会停止提取，并跳过与活动目录簇重叠的数据范围。不进入已删除目录。
-- 若当前 FAT 中存在可见的碎片、提前结束或无效链，程序跳过该删除项；若删除时 FAT 链已清除，程序仍按首簇和文件大小读取连续区域，可能无法恢复或产生错误候选。它不重组碎片文件。
+- 默认跳过可见碎片链；显式启用实验模式后，只有完整 FAT 链、完整活动文件分配映射且无已知簇冲突的候选才会重组。链中断、冲突或活动文件映射不完整时仍跳过；FAT 链清空时仍按连续区域假设，可能无法恢复或产生错误候选。
 - 不恢复 NTFS/exFAT/ext/APFS/HFS+/F2FS 的文件系统删除记录，不扫描物理设备。
 - SQLite 只雕刻主数据库，不重放 WAL、不恢复删除行、不解析应用 schema。
 - 部分介质损坏只在合成镜像中用零填充和截断模拟；不读取坏道、不修复文件。
-- APFS、HFS+、F2FS、完整 NTFS 解析和通用碎片重组尚未实现。
+- APFS、HFS+、F2FS 和完整 NTFS 解析尚未实现；FAT32 碎片重组仍属受限实验功能。
 
 ## License
 
@@ -108,6 +124,6 @@ GitHub Actions 在 Windows 与 Ubuntu 上使用 Python 3.12、3.13 执行单元�
 
 ## English
 
-PDRS is a read-only educational prototype for regular raw image files. It carves contiguous BMP, JPEG, PNG, PDF, and SQLite main-database candidates. An experimental command scans FAT32 root directories and active subdirectories for deleted short-name entries, attempts to reconstruct adjacent deleted LFN slots, and skips entries when the surviving FAT shows a fragmented, prematurely ended, or invalid chain. When deletion has cleared FAT links, it still assumes file data is contiguous. The lost short-name first byte prevents full LFN checksum verification. It does not scan physical devices, enter deleted directories, or reassemble fragmented files.
+PDRS is a read-only educational prototype for regular raw image files. It carves contiguous BMP, JPEG, PNG, PDF, and SQLite main-database candidates. An experimental command scans FAT32 root directories and active subdirectories for deleted short-name entries and attempts to reconstruct adjacent deleted LFN slots. Visible fragmented chains are skipped by default; an explicit experimental option reassembles complete chains after active-allocation overlap checks. When deletion has cleared FAT links, it still assumes file data is contiguous. The lost short-name first byte prevents full LFN checksum verification. It does not scan physical devices or enter deleted directories.
 
 Filesystem support is independent of the host OS. NTFS currently has marker recognition only; ext support is superblock metadata only; APFS, HFS+, and F2FS are not parsed. SQLite is treated as a generic main database: no WAL replay, deleted-row recovery, or app-schema extraction. Use authorized image copies only. See [the recovery roadmap](docs/RECOVERY_ROADMAP.md). The license has not been selected yet.
