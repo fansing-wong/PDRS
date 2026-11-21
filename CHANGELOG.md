@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.0 — FAT32 cluster-size matrix
+
+- Extends the synthetic deleted-entry dataset to support 512 B, 1 KiB, and 2 KiB clusters.
+- Adds a deleted zero-length file case and scales multi-cluster, fragmented, and interrupted samples to each cluster size.
+- Adds a matrix runner that aggregates Ground Truth and data-layout metrics into one CSV.
+
 ## 0.15.0 — FAT32 layout evidence reporting
 
 - Reports whether the FAT links needed for a candidate are contiguous or were cleared after deletion.

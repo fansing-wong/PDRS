@@ -287,6 +287,28 @@ class Fat32RecoveryTests(unittest.TestCase):
             self.assertEqual(row["offset"], expected_offset)
             self.assertEqual((output / str(row["filename"])).read_bytes(), payload)
 
+    def test_recovers_deleted_zero_length_file_without_reading_data(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_zero_length_deleted.img"
+            make_deleted_fat32_image(image)
+            root_offset = SECTOR_SIZE + DATA_START_SECTOR * SECTOR_SIZE
+            with image.open("r+b") as handle:
+                handle.seek(root_offset + 26)
+                handle.write(b"\0\0")
+                handle.seek(root_offset + 28)
+                handle.write(b"\0\0\0\0")
+
+            output = root / "recovered"
+            result = recover_deleted_fat32(image, output)
+
+            self.assertEqual(len(result.rows), 1)
+            row = result.rows[0]
+            self.assertEqual(row["size_bytes"], 0)
+            self.assertEqual(row["data_layout_status"], "zero_length")
+            self.assertEqual(row["sha256"], hashlib.sha256(b"").hexdigest())
+            self.assertEqual((output / str(row["filename"])).read_bytes(), b"")
+
     def test_skips_deleted_file_when_fat_chain_ends_before_declared_size(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

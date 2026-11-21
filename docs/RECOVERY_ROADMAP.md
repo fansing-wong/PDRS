@@ -1,6 +1,6 @@
 # Recovery scenarios and platform roadmap
 
-## Current pilot (PDRS 0.15.0)
+## Current pilot (PDRS 0.16.0)
 
 PDRS accepts regular raw image files and reads them without writing to the source. It carves contiguous BMP, JPEG, PNG, PDF, and SQLite main-database candidates. SQLite candidates up to 64 MiB receive `PRAGMA quick_check`; larger candidates receive bounded header and page-one checks, with the skipped deep check reported. The scanner does not join SQLite `-wal` files, recover deleted rows, or interpret app-specific schemas.
 
@@ -25,11 +25,12 @@ Each result folder contains a manifest and Ground Truth comparison. The exact ha
 
 ## FAT32 deleted-entry pilot
 
-`examples/make_fat32_deleted_demo.py` builds a synthetic MBR/FAT32 image with deleted 8.3 entries and LFN slots in the root and an active subdirectory, plus active-file, deleted-directory, visible-fragmentation, interrupted-chain, and positive multi-cluster controls. Run `examples/run_fat32_deleted_demo.py` to compare recovered SHA-256, data offsets, and names with Ground Truth. It writes LFN name matches to `lfn_name_comparison.csv` and candidate layout counts to `data_layout_summary.csv`. The script accepts a custom output location so existing demo results are not overwritten:
+`examples/make_fat32_deleted_demo.py` builds a synthetic MBR/FAT32 image with deleted 8.3 entries and LFN slots, plus zero-length, positive multi-cluster, active-file, deleted-directory, visible-fragmentation, and interrupted-chain controls. It accepts 1, 2, or 4 sectors per cluster. Run `examples/run_fat32_layout_matrix_v16.py` to create 512 B, 1 KiB, and 2 KiB cluster variants and aggregate the Ground Truth metrics into `matrix_summary.csv`; per-image detail stays in each scenario folder.
 
 ```powershell
-.\.venv\Scripts\python.exe .\examples\make_fat32_deleted_demo.py --output-dir .\examples\fat32_deleted_demo_v15
-.\.venv\Scripts\python.exe .\examples\run_fat32_deleted_demo.py --demo-dir .\examples\fat32_deleted_demo_v15
+.\.venv\Scripts\python.exe .\examples\make_fat32_deleted_demo.py --output-dir .\examples\fat32_deleted_demo_v16 --sectors-per-cluster 1
+.\.venv\Scripts\python.exe .\examples\run_fat32_deleted_demo.py --demo-dir .\examples\fat32_deleted_demo_v16
+.\.venv\Scripts\python.exe .\examples\run_fat32_layout_matrix_v16.py
 ```
 
 The deleted short-name first character is gone; the tool uses the adjacent LFN slots for the display name, but the erased alias byte prevents full checksum verification. The command recovers bytes from the directory-entry size and first cluster. It only finds entries inside directories whose own chains remain active; it cannot traverse a deleted directory. It skips files if visible FAT links show fragmentation, end before the declared size, or are invalid; it assumes contiguous storage if deletion cleared the FAT chain. It does not validate the recovered file format. Treat this as a controlled proof of concept, not a broad FAT32 recovery claim.
@@ -54,7 +55,7 @@ The current program does not open physical drives. For a later research mileston
 ## Suggested milestone order
 
 1. Add zero-length FAT32 cases and repeat contiguous/interrupted samples across several cluster sizes; report byte-level recovery and false-positive rates.
-2. Expand FAT32 layout evaluation across multiple cluster sizes, partially surviving chains, and cleared chains; do not silently claim fragmented recovery.
+2. Expand FAT32 layout evaluation across partially surviving chains and cleared chains; do not silently claim fragmented recovery.
 3. Add bounded NTFS MFT record inspection and separately evaluate resident versus nonresident data.
 4. Add ext4 inode/extent metadata reading, with explicit limits for journal replay and extents.
 5. Evaluate F2FS and APFS metadata as separate projects because their structures and encryption constraints differ.

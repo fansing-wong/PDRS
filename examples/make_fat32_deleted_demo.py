@@ -1,4 +1,4 @@
-"""Generate synthetic FAT32 root, subdirectory, and deleted-directory controls."""
+"""Generate synthetic FAT32 controls with a selectable cluster size."""
 from __future__ import annotations
 
 import argparse
@@ -7,8 +7,8 @@ import hashlib
 import struct
 from pathlib import Path
 
-DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo_v15"
-TOTAL_SECTORS = 70000
+DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo_v16"
+BASE_TOTAL_SECTORS = 70000
 SECTOR_SIZE = 512
 RESERVED_SECTORS = 32
 SECTORS_PER_FAT = 550
@@ -26,8 +26,10 @@ INTERRUPTED_FIRST_CLUSTER = 60
 INTERRUPTED_DECOY_CLUSTER = 61
 
 
-def cluster_offset(cluster: int) -> int:
-    return SECTOR_SIZE + (DATA_START_SECTOR + cluster - 2) * SECTOR_SIZE
+def cluster_offset(cluster: int, sectors_per_cluster: int = 1) -> int:
+    return SECTOR_SIZE + (
+        DATA_START_SECTOR + (cluster - 2) * sectors_per_cluster
+    ) * SECTOR_SIZE
 
 
 def _lfn_checksum(short_name: bytes) -> int:
@@ -68,7 +70,12 @@ def _deleted_lfn_entries(long_name: str, short_name: bytes) -> list[bytes]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_ROOT)
-    root = parser.parse_args().output_dir.expanduser().resolve()
+    parser.add_argument("--sectors-per-cluster", type=int, choices=(1, 2, 4), default=1)
+    args = parser.parse_args()
+    sectors_per_cluster = args.sectors_per_cluster
+    cluster_size = SECTOR_SIZE * sectors_per_cluster
+    total_sectors = BASE_TOTAL_SECTORS * sectors_per_cluster
+    root = args.output_dir.expanduser().resolve()
     image_dir = root / "images"
     source_dir = root / "sources"
     if root.exists():
@@ -77,31 +84,35 @@ def main() -> None:
     source_dir.mkdir()
     root_source = source_dir / "deleted_root_sample.txt"
     nested_source = source_dir / "deleted_subdirectory_sample.txt"
+    zero_source = source_dir / "zero_length_sample.bin"
     root_payload = (
         b"Synthetic FAT32 deleted-file sample for PDRS.\r\n"
         b"This entry lives in the root directory and its data is contiguous.\r\n"
     ) * 6
     root_short_name = b"ROOTSAMPTXT"
     nested_short_name = b"NESTSAMPTXT"
-    nested_payload = (
+    nested_unit = (
         b"This deleted entry is in an active FAT32 subdirectory.\r\n"
         b"The original directory remains allocated; file data is contiguous.\r\n"
-    ) * 10
+    )
+    nested_repetitions = max(10, (2 * cluster_size + len(nested_unit)) // len(nested_unit) + 1)
+    nested_payload = nested_unit * nested_repetitions
     active_payload = b"This intact active file must not be extracted as deleted.\r\n" * 6
     hidden_payload = b"This deleted file is inside a deleted directory and must be ignored.\r\n"
-    fragmented_payload = bytes((index * 37 + 11) % 256 for index in range(700))
-    interrupted_payload = bytes((index * 19 + 7) % 256 for index in range(700))
+    fragmented_payload = bytes((index * 37 + 11) % 256 for index in range(cluster_size + 188))
+    interrupted_payload = bytes((index * 19 + 7) % 256 for index in range(cluster_size + 188))
     root_source.write_bytes(root_payload)
     nested_source.write_bytes(nested_payload)
+    zero_source.write_bytes(b"")
 
     image_path = image_dir / "fat32_deleted_root.img"
     with image_path.open("wb") as handle:
-        handle.truncate((TOTAL_SECTORS + 1) * SECTOR_SIZE)
+        handle.truncate((total_sectors + 1) * SECTOR_SIZE)
     with image_path.open("r+b") as handle:
         mbr = bytearray(SECTOR_SIZE)
         partition_entry = 446
         mbr[partition_entry + 4] = 0x0C
-        struct.pack_into("<II", mbr, partition_entry + 8, 1, TOTAL_SECTORS)
+        struct.pack_into("<II", mbr, partition_entry + 8, 1, total_sectors)
         mbr[510:512] = b"\x55\xaa"
         handle.seek(0)
         handle.write(mbr)
@@ -109,11 +120,11 @@ def main() -> None:
         boot = bytearray(SECTOR_SIZE)
         boot[3:11] = b"MSWIN4.1"
         struct.pack_into("<H", boot, 11, SECTOR_SIZE)
-        boot[13] = 1
+        boot[13] = sectors_per_cluster
         struct.pack_into("<H", boot, 14, RESERVED_SECTORS)
         boot[16] = 1
         boot[21] = 0xF8
-        struct.pack_into("<I", boot, 32, TOTAL_SECTORS)
+        struct.pack_into("<I", boot, 32, total_sectors)
         struct.pack_into("<I", boot, 36, SECTORS_PER_FAT)
         struct.pack_into("<I", boot, 44, ROOT_CLUSTER)
         struct.pack_into("<H", boot, 48, 1)
@@ -131,7 +142,7 @@ def main() -> None:
         struct.pack_into("<I", fat, ROOT_CLUSTER * 4, 0x0FFFFFFF)
         struct.pack_into("<I", fat, (FILE_CLUSTER + 4) * 4, 0x0FFFFFFF)
         struct.pack_into("<I", fat, SUBDIRECTORY_CLUSTER * 4, 0x0FFFFFFF)
-        nested_cluster_count = (len(nested_payload) + SECTOR_SIZE - 1) // SECTOR_SIZE
+        nested_cluster_count = (len(nested_payload) + cluster_size - 1) // cluster_size
         for relative_cluster in range(nested_cluster_count - 1):
             struct.pack_into(
                 "<I",
@@ -159,7 +170,7 @@ def main() -> None:
         deleted_entry[11] = 0x20
         struct.pack_into("<H", deleted_entry, 26, FILE_CLUSTER)
         struct.pack_into("<I", deleted_entry, 28, len(root_payload))
-        root_directory_offset = SECTOR_SIZE + DATA_START_SECTOR * SECTOR_SIZE
+        root_directory_offset = cluster_offset(ROOT_CLUSTER, sectors_per_cluster)
         handle.seek(root_directory_offset)
         for lfn_entry in _deleted_lfn_entries(root_source.name, root_short_name):
             handle.write(lfn_entry)
@@ -209,6 +220,17 @@ def main() -> None:
         struct.pack_into("<I", interrupted_entry, 28, len(interrupted_payload))
         handle.write(interrupted_entry)
 
+        zero_short_name = b"ZEROFILEBIN"
+        for lfn_entry in _deleted_lfn_entries(zero_source.name, zero_short_name):
+            handle.write(lfn_entry)
+        zero_entry = bytearray(32)
+        zero_entry[0] = 0xE5
+        zero_entry[1:8] = b"EROFILE"
+        zero_entry[8:11] = b"BIN"
+        zero_entry[11] = 0x20
+        struct.pack_into("<I", zero_entry, 28, 0)
+        handle.write(zero_entry)
+
         nested_deleted_entry = bytearray(32)
         nested_deleted_entry[0] = 0xE5
         nested_deleted_entry[1:8] = b"ESTSAMP"
@@ -216,7 +238,7 @@ def main() -> None:
         nested_deleted_entry[11] = 0x20
         struct.pack_into("<H", nested_deleted_entry, 26, NESTED_FILE_CLUSTER)
         struct.pack_into("<I", nested_deleted_entry, 28, len(nested_payload))
-        handle.seek(cluster_offset(SUBDIRECTORY_CLUSTER))
+        handle.seek(cluster_offset(SUBDIRECTORY_CLUSTER, sectors_per_cluster))
         for lfn_entry in _deleted_lfn_entries(nested_source.name, nested_short_name):
             handle.write(lfn_entry)
         handle.write(nested_deleted_entry)
@@ -239,27 +261,27 @@ def main() -> None:
         hidden_deleted_entry[11] = 0x20
         struct.pack_into("<H", hidden_deleted_entry, 26, DECOY_FILE_CLUSTER)
         struct.pack_into("<I", hidden_deleted_entry, 28, len(hidden_payload))
-        handle.seek(cluster_offset(DELETED_DIRECTORY_CLUSTER))
+        handle.seek(cluster_offset(DELETED_DIRECTORY_CLUSTER, sectors_per_cluster))
         handle.write(hidden_deleted_entry)
 
-        handle.seek(cluster_offset(FILE_CLUSTER))
+        handle.seek(cluster_offset(FILE_CLUSTER, sectors_per_cluster))
         handle.write(root_payload)
-        handle.seek(cluster_offset(FILE_CLUSTER + 4))
+        handle.seek(cluster_offset(FILE_CLUSTER + 4, sectors_per_cluster))
         handle.write(active_payload)
-        handle.seek(cluster_offset(NESTED_FILE_CLUSTER))
+        handle.seek(cluster_offset(NESTED_FILE_CLUSTER, sectors_per_cluster))
         handle.write(nested_payload)
-        handle.seek(cluster_offset(DECOY_FILE_CLUSTER))
+        handle.seek(cluster_offset(DECOY_FILE_CLUSTER, sectors_per_cluster))
         handle.write(hidden_payload)
-        handle.seek(cluster_offset(FRAGMENT_FIRST_CLUSTER))
-        handle.write(fragmented_payload[:SECTOR_SIZE])
-        handle.seek(cluster_offset(FRAGMENT_SECOND_CLUSTER))
-        handle.write(fragmented_payload[SECTOR_SIZE:])
-        handle.seek(cluster_offset(CONTIGUOUS_DECOY_CLUSTER))
+        handle.seek(cluster_offset(FRAGMENT_FIRST_CLUSTER, sectors_per_cluster))
+        handle.write(fragmented_payload[:cluster_size])
+        handle.seek(cluster_offset(FRAGMENT_SECOND_CLUSTER, sectors_per_cluster))
+        handle.write(fragmented_payload[cluster_size:])
+        handle.seek(cluster_offset(CONTIGUOUS_DECOY_CLUSTER, sectors_per_cluster))
         handle.write(b"CONTIGUOUS-DECOY-" * 40)
-        handle.seek(cluster_offset(INTERRUPTED_FIRST_CLUSTER))
-        handle.write(interrupted_payload[:SECTOR_SIZE])
-        handle.seek(cluster_offset(INTERRUPTED_DECOY_CLUSTER))
-        handle.write(interrupted_payload[SECTOR_SIZE:])
+        handle.seek(cluster_offset(INTERRUPTED_FIRST_CLUSTER, sectors_per_cluster))
+        handle.write(interrupted_payload[:cluster_size])
+        handle.seek(cluster_offset(INTERRUPTED_DECOY_CLUSTER, sectors_per_cluster))
+        handle.write(interrupted_payload[cluster_size:])
 
     truth_path = root / "ground_truth.csv"
     with truth_path.open("x", newline="", encoding="utf-8") as handle:
@@ -273,34 +295,43 @@ def main() -> None:
                 "image_filename": image_path.name,
                 "source_filename": root_source.name,
                 "target_present": "true",
-                "expected_offset": cluster_offset(FILE_CLUSTER),
+                "expected_offset": cluster_offset(FILE_CLUSTER, sectors_per_cluster),
                 "expected_sha256": hashlib.sha256(root_payload).hexdigest(),
             },
             {
                 "image_filename": image_path.name,
                 "source_filename": nested_source.name,
                 "target_present": "true",
-                "expected_offset": cluster_offset(NESTED_FILE_CLUSTER),
+                "expected_offset": cluster_offset(NESTED_FILE_CLUSTER, sectors_per_cluster),
                 "expected_sha256": hashlib.sha256(nested_payload).hexdigest(),
+            },
+            {
+                "image_filename": image_path.name,
+                "source_filename": zero_source.name,
+                "target_present": "true",
+                "expected_offset": cluster_offset(ROOT_CLUSTER, sectors_per_cluster),
+                "expected_sha256": hashlib.sha256(b"").hexdigest(),
             },
             {
                 "image_filename": image_path.name,
                 "source_filename": "fragmented_control.bin",
                 "target_present": "false",
-                "expected_offset": cluster_offset(FRAGMENT_FIRST_CLUSTER),
+                "expected_offset": cluster_offset(FRAGMENT_FIRST_CLUSTER, sectors_per_cluster),
                 "expected_sha256": hashlib.sha256(fragmented_payload).hexdigest(),
             },
             {
                 "image_filename": image_path.name,
                 "source_filename": "interrupted_chain_control.bin",
                 "target_present": "false",
-                "expected_offset": cluster_offset(INTERRUPTED_FIRST_CLUSTER),
+                "expected_offset": cluster_offset(INTERRUPTED_FIRST_CLUSTER, sectors_per_cluster),
                 "expected_sha256": hashlib.sha256(interrupted_payload).hexdigest(),
             },
         ))
     print(f"Synthetic FAT32 image: {image_path}")
     print(f"Root source file:     {root_source}")
     print(f"Nested source file:   {nested_source}")
+    print(f"Zero-length source:   {zero_source}")
+    print(f"Sectors per cluster:  {sectors_per_cluster}")
     print(f"Ground truth:         {truth_path}")
     print(
         "The image tests root/subdirectory deletion, ignores active-file and deleted-directory controls, "

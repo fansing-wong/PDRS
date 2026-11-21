@@ -13,7 +13,7 @@ from pdrs.evaluation import evaluate_ground_truth, load_ground_truth, write_eval
 from pdrs.fat32_recovery import recover_deleted_fat32
 from pdrs.manifest import write_manifest
 
-DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo_v15"
+DEFAULT_ROOT = Path(__file__).resolve().parent / "fat32_deleted_demo_v16"
 
 
 def main() -> None:
