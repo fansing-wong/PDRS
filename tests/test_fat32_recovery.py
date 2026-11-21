@@ -102,6 +102,47 @@ def make_deleted_fat32_image(path: Path) -> tuple[bytes, int]:
     return payload, data_offset
 
 
+def configure_two_fats_with_active_copy_one(image_path: Path) -> int:
+    """Expand the fixture to two FATs and make only copy 1 authoritative."""
+    partition_offset = SECTOR_SIZE
+    fat_bytes = SECTORS_PER_FAT * SECTOR_SIZE
+    first_data_offset = partition_offset + DATA_START_SECTOR * SECTOR_SIZE
+    with image_path.open("r+b") as handle:
+        handle.seek(partition_offset + RESERVED_SECTORS * SECTOR_SIZE)
+        original_fat = handle.read(fat_bytes)
+        handle.seek(0, 2)
+        image_size = handle.tell()
+
+        # Shift the old data area right by one FAT without buffering the image.
+        remaining = image_size - first_data_offset
+        while remaining:
+            length = min(1024 * 1024, remaining)
+            source_offset = first_data_offset + remaining - length
+            handle.seek(source_offset)
+            chunk = handle.read(length)
+            handle.seek(source_offset + fat_bytes)
+            handle.write(chunk)
+            remaining -= length
+
+        handle.seek(first_data_offset)
+        handle.write(original_fat)
+        handle.seek(partition_offset + RESERVED_SECTORS * SECTOR_SIZE)
+        handle.write(bytes(fat_bytes))
+
+        handle.seek(partition_offset)
+        boot = bytearray(handle.read(SECTOR_SIZE))
+        boot[16] = 2
+        struct.pack_into("<H", boot, 40, 0x0081)  # Mirroring off; active FAT is copy 1.
+        handle.seek(partition_offset)
+        handle.write(boot)
+
+    return (
+        partition_offset
+        + (DATA_START_SECTOR + SECTORS_PER_FAT) * SECTOR_SIZE
+        + (FILE_CLUSTER - 2) * SECTOR_SIZE
+    )
+
+
 def add_subdirectory_controls(image_path: Path) -> tuple[bytes, int]:
     nested_payload = b"Deleted in an active FAT32 subdirectory.\r\n" * 20
     decoy_payload = b"Must stay hidden inside a deleted directory.\r\n"
@@ -275,6 +316,35 @@ class Fat32RecoveryTests(unittest.TestCase):
             self.assertEqual((output / str(row["filename"])).read_bytes(), payload)
             self.assertEqual(row["sha256"], hashlib.sha256(payload).hexdigest())
             self.assertEqual(hashlib.sha256(image.read_bytes()).hexdigest(), before_hash)
+
+    def test_uses_bpb_active_fat_when_mirroring_is_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_active_copy_one.img"
+            payload, _ = make_deleted_fat32_image(image)
+            expected_offset = configure_two_fats_with_active_copy_one(image)
+
+            result = recover_deleted_fat32(image, root / "recovered")
+
+            self.assertEqual(len(result.rows), 1)
+            row = result.rows[0]
+            self.assertEqual(row["offset"], expected_offset)
+            self.assertEqual((root / "recovered" / str(row["filename"])).read_bytes(), payload)
+            self.assertTrue(any("active FAT copy 1" in item for item in result.warnings))
+
+    def test_rejects_bpb_active_fat_index_outside_fat_count(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_invalid_active_copy.img"
+            make_deleted_fat32_image(image)
+            with image.open("r+b") as handle:
+                handle.seek(SECTOR_SIZE + 40)
+                handle.write(struct.pack("<H", 0x0081))  # Copy 1 selected, but only one FAT exists.
+
+            result = recover_deleted_fat32(image, root / "recovered")
+
+            self.assertEqual(result.rows, [])
+            self.assertTrue(any("FAT copy that does not exist" in item for item in result.warnings))
 
     def test_skips_deleted_file_when_surviving_fat_link_shows_fragmentation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
