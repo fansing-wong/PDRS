@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.18.0 — Opt-in FAT32 deleted-directory scanning
+
+- Adds an opt-in scan for direct deleted-file entries inside deleted directories whose FAT chains remain complete.
+- Requires complete active-file allocation mapping and skips deleted-directory chains that overlap active directories, active files, or another scanned deleted directory.
+- Protects recovered file ranges from scanned directory clusters and other candidates; records deleted-parent provenance in the manifest and GUI.
+- Bounds deleted-directory traversal to 256 entries and 64 MiB, and does not recurse into nested deleted directories.
+- Adds a synthetic matrix at 512 B, 1 KiB, and 2 KiB clusters; all fixtures recovered 5/5 expected files with zero false-positive candidates.
+
 ## 0.17.0 — Opt-in FAT32 fragmented-chain reassembly
 
 - Adds an opt-in recovery mode that follows complete surviving FAT chains and writes clusters in logical file order.

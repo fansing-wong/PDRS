@@ -88,7 +88,7 @@ The demo writes two non-empty source files plus a zero-length file and records e
 
 Each image also has two expected-absent controls: a visibly fragmented file and an interrupted chain. These are results for the generated fixtures only; they do not estimate performance on real media.
 
-The deleted short-name first byte remains unavailable; because of that, an LFN's checksum cannot be fully verified against its short alias. The LFN is metadata for display and output naming, while each saved file also gets an offset suffix to keep names unique. The scanner does not enter deleted directories or validate recovered formats. The normal mode skips visible non-contiguous chains. The v0.17 opt-in mode reassembles only complete chains after overlap checks; this remains a hypothesis about the deleted file's original allocation, not proof of provenance. A cleared FAT chain cannot establish the original layout, so it continues to use an explicitly reported contiguous-data assumption. Traversal is bounded to 32 directory levels, 4,096 directory starts, 256 MiB of directory bytes, and 64 MiB per individual directory chain. Active-file cluster mapping has a one-million-cluster cap. If traversal reaches a safety limit or an active directory chain is malformed, extraction is skipped for that volume. A candidate whose data clusters overlap a scanned active directory or mapped active file is skipped in opt-in mode.
+The deleted short-name first byte remains unavailable; because of that, an LFN's checksum cannot be fully verified against its short alias. The LFN is metadata for display and output naming, while each saved file also gets an offset suffix to keep names unique. The v0.17 pilot did not enter deleted directories or validate recovered formats. The normal mode skips visible non-contiguous chains. The v0.17 opt-in mode reassembles only complete chains after overlap checks; this remains a hypothesis about the deleted file's original allocation, not proof of provenance. A cleared FAT chain cannot establish the original layout, so it continues to use an explicitly reported contiguous-data assumption. Active-directory traversal is bounded to 32 levels, 4,096 directory starts, 256 MiB of directory bytes, and 64 MiB per individual directory chain. Active-file cluster mapping has a one-million-cluster cap. If traversal reaches a safety limit or an active directory chain is malformed, extraction is skipped for that volume. A candidate whose data clusters overlap a scanned active directory or mapped active file is skipped in the opt-in modes.
 
 The v0.17 comparison scripts generate 512 B, 1 KiB, and 2 KiB cluster variants and write per-image details plus `matrix_summary.csv` under `examples/fat32_layout_matrix_v17`. Each fixture includes four expected files (root, nested, zero-length, and fragmented) and three expected-absent controls (active file, deleted directory, and interrupted chain). The run on the generated fixtures produced:
 
@@ -99,3 +99,17 @@ The v0.17 comparison scripts generate 512 B, 1 KiB, and 2 KiB cluster variants a
 | 2,048 B | 4 | 4/4 | 3 | 0 | 100% | 100% | 100% |
 
 In all three runs, `fragmented_chain_reassembled=1`; the two larger cluster cases also classify the shorter root sample as `single_cluster`. These are measurements on synthetic fixtures only and do not estimate performance on real media.
+
+### v0.18: direct entries inside deleted directories
+
+The opt-in scanner follows a deleted directory's surviving FAT chain and checks its direct deleted regular-file entries. It does not recurse into nested deleted directories. Before scanning a directory it requires a complete chain and rejects overlap with active directory clusters, active file clusters, or another scanned deleted directory. Recovered files are also checked against scanned directory clusters, mapped active files, and other recovered candidates. The scan is capped at 256 deleted-directory entries and 64 MiB of directory data. This cannot establish that a surviving chain belonged to the deleted directory; it is a controlled heuristic, not a guarantee of recovery provenance.
+
+`prepare_deleted_directory_fixture_v18.py` changes only a generated v17 synthetic image, after verifying its PDRS marker, to retain a known end-of-chain FAT link for the sample deleted directory. The matrix driver does this in isolated demo folders at 512 B, 1 KiB, and 2 KiB cluster sizes, then compares five expected files and two expected-absent controls. The current synthetic run produced:
+
+| Cluster size | Expected present | Exact | Expected absent | False positives | Precision | Recall | Offset match |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 B | 5 | 5/5 | 2 | 0 | 100% | 100% | 100% |
+| 1,024 B | 5 | 5/5 | 2 | 0 | 100% | 100% | 100% |
+| 2,048 B | 5 | 5/5 | 2 | 0 | 100% | 100% | 100% |
+
+The deleted-directory target is one deterministic synthetic example; the v17 generator alone does not preserve its FAT chain. These results validate behavior on that fixture and its controls only, not a real-world deleted-directory recovery rate.

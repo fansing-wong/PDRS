@@ -32,6 +32,7 @@ class PDRSApp:
         self.output_path = tk.StringVar()
         self.ground_truth_path = tk.StringVar()
         self.reassemble_fragmented = tk.BooleanVar(value=False)
+        self.scan_deleted_directories = tk.BooleanVar(value=False)
         self.status = tk.StringVar(value="请选择 raw 镜像和一个空的输出目录。")
         self.file_info = tk.StringVar(value="尚未选择镜像")
         self.result_info = tk.StringVar(value="尚未运行扫描")
@@ -169,6 +170,14 @@ class PDRSApp:
         )
         self.fragmented_reassembly_check.grid(
             row=7, column=0, columnspan=4, sticky="w", pady=(7, 0)
+        )
+        self.deleted_directory_check = ttk.Checkbutton(
+            form,
+            text="扫描完整链的已删除目录（实验；拒绝与活动数据簇重叠）",
+            variable=self.scan_deleted_directories,
+        )
+        self.deleted_directory_check.grid(
+            row=8, column=0, columnspan=4, sticky="w", pady=(4, 0)
         )
 
         results = ttk.LabelFrame(page, text="扫描结果", padding=12)
@@ -419,16 +428,22 @@ class PDRSApp:
                 return
 
         reassemble_fragmented = self.reassemble_fragmented.get()
+        scan_deleted_directories = self.scan_deleted_directories.get()
         chain_policy = (
             "完整 FAT 链可按逻辑顺序尝试重组；活动文件分配映射不完整或发现活动目录/文件簇冲突时会跳过。"
             if reassemble_fragmented
             else "可见碎片链会跳过；FAT 链已清空时仍会明确标记并假定数据连续。"
         )
+        directory_policy = (
+            "会扫描仍能按完整 FAT 链读取、且不与活动文件或目录簇冲突的已删除目录；不会递归扫描其中的子目录。"
+            if scan_deleted_directories
+            else "默认不扫描已删除目录。"
+        )
         confirmed = messagebox.askyesno(
             "实验性 FAT32 恢复",
             "将只读检查 raw 镜像中 FAT32 根目录及仍可访问的子目录。\n\n"
             "仅尝试短文件名项及相邻 LFN 名称；短名首字符丢失，LFN 校验和无法完整核验。\n"
-            f"{chain_policy} 提前结束或无效 FAT 链会跳过；不进入已删除目录，也不保证文件内容有效。\n"
+            f"{chain_policy} {directory_policy} 提前结束或无效 FAT 链会跳过，也不保证文件内容有效。\n"
             "请只对自己制作或获准检查的镜像副本操作。继续吗？",
             parent=self.root,
         )
@@ -446,13 +461,14 @@ class PDRSApp:
         self.details.set(
             "实验性 FAT32 恢复扫描删除短文件名项并尝试重建相邻 LFN；"
             + ("完整且无冲突的 FAT 链可按顺序重组。" if reassemble_fragmented else "可见碎片链会跳过。")
+            + ("也将扫描可验证的已删除目录。" if scan_deleted_directories else "")
         )
         self._clear_results()
         self._set_busy(True)
         self.status.set("正在只读检查 FAT32 目录…")
         threading.Thread(
             target=self._fat32_recovery_worker,
-            args=(source, output, ground_truth_records, reassemble_fragmented),
+            args=(source, output, ground_truth_records, reassemble_fragmented, scan_deleted_directories),
             daemon=True,
         ).start()
 
@@ -462,10 +478,14 @@ class PDRSApp:
         output: Path,
         ground_truth_records: list[GroundTruthRecord] | None,
         reassemble_fragmented: bool,
+        scan_deleted_directories: bool,
     ) -> None:
         try:
             result = recover_deleted_fat32(
-                source, output, reassemble_fragmented=reassemble_fragmented
+                source,
+                output,
+                reassemble_fragmented=reassemble_fragmented,
+                scan_deleted_directories=scan_deleted_directories,
             )
             manifest = write_manifest(output.resolve(), result.rows)
             evaluation: EvaluationResult | None = None
@@ -766,6 +786,10 @@ class PDRSApp:
                 detail_lines.append("数据布局：单簇文件。")
             if row.get("source_extents"):
                 detail_lines.append(f"镜像来源片段：{row['source_extents']}")
+            if row.get("parent_deleted_directory"):
+                detail_lines.append(
+                    f"目录来源：已删除目录（首簇 {row.get('parent_directory_cluster')}）；仅扫描该目录直接文件项。"
+                )
         if row.get("original_long_filename"):
             detail_lines.append(f"恢复的长文件名（短名校验和无法核实）：{row['original_long_filename']}")
         elif row.get("long_filename_status") == "invalid":
@@ -872,6 +896,7 @@ class PDRSApp:
         self.inspect_button.configure(state=state)
         self.recover_fat32_button.configure(state=state)
         self.fragmented_reassembly_check.configure(state=state)
+        self.deleted_directory_check.configure(state=state)
         self.image_button.configure(state=state)
         self.output_button.configure(state=state)
         self.image_paste_button.configure(state=state)

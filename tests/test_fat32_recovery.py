@@ -425,6 +425,92 @@ class Fat32RecoveryTests(unittest.TestCase):
                 b"Must stay hidden inside a deleted directory.\r\n"
             ).hexdigest() for row in result.rows))
 
+    def test_opt_in_scans_direct_deleted_file_entries_in_deleted_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_deleted_directory.img"
+            root_payload, _ = make_deleted_fat32_image(image)
+            nested_payload, nested_offset = add_subdirectory_controls(image)
+            hidden_payload = b"Must stay hidden inside a deleted directory.\r\n"
+            output = root / "recovered"
+
+            result = recover_deleted_fat32(image, output, scan_deleted_directories=True)
+
+            self.assertEqual(result.deleted_entries_seen, 3)
+            self.assertEqual(len(result.rows), 3)
+            hidden_row = next(row for row in result.rows if row["parent_deleted_directory"])
+            self.assertEqual(hidden_row["parent_directory_cluster"], DELETED_DIRECTORY_CLUSTER)
+            self.assertEqual(hidden_row["sha256"], hashlib.sha256(hidden_payload).hexdigest())
+            self.assertEqual((output / str(hidden_row["filename"])).read_bytes(), hidden_payload)
+            self.assertEqual((output / str(result.rows[0]["filename"])).read_bytes(), root_payload)
+            nested_row = next(row for row in result.rows if row["offset"] == nested_offset)
+            self.assertEqual((output / str(nested_row["filename"])).read_bytes(), nested_payload)
+
+    def test_opt_in_skips_deleted_directory_chain_overlapping_active_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_deleted_directory_overlap.img"
+            make_deleted_fat32_image(image)
+            add_subdirectory_controls(image)
+            root_offset = SECTOR_SIZE + DATA_START_SECTOR * SECTOR_SIZE
+            with image.open("r+b") as handle:
+                handle.seek(root_offset + 3 * 32 + 26)
+                handle.write(struct.pack("<H", SUBDIRECTORY_CLUSTER))
+            output = root / "recovered"
+
+            result = recover_deleted_fat32(image, output, scan_deleted_directories=True)
+
+            self.assertEqual(len(result.rows), 2)
+            self.assertFalse(any(row["parent_deleted_directory"] for row in result.rows))
+            self.assertTrue(any("overlaps active or already scanned cluster" in item for item in result.warnings))
+
+    def test_opt_in_refuses_deleted_directory_scan_when_active_file_map_is_incomplete(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_deleted_directory_incomplete_map.img"
+            make_deleted_fat32_image(image)
+            add_subdirectory_controls(image)
+            fat_offset = SECTOR_SIZE + FAT_START_SECTOR * SECTOR_SIZE
+            with image.open("r+b") as handle:
+                handle.seek(fat_offset + (FILE_CLUSTER + 4) * 4)
+                handle.write(struct.pack("<I", 0x0FFFFFFF))
+            output = root / "recovered"
+
+            result = recover_deleted_fat32(image, output, scan_deleted_directories=True)
+
+            self.assertFalse(any(row["parent_deleted_directory"] for row in result.rows))
+            self.assertTrue(
+                any("Deleted directories were not scanned because active-file allocation" in item for item in result.warnings)
+            )
+
+    def test_opt_in_withholds_deleted_candidates_when_active_child_file_overlaps_directory_chain(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "fat32_deleted_directory_child_overlap.img"
+            make_deleted_fat32_image(image)
+            add_subdirectory_controls(image)
+            deleted_directory_offset = (
+                SECTOR_SIZE
+                + (DATA_START_SECTOR + DELETED_DIRECTORY_CLUSTER - 2) * SECTOR_SIZE
+            )
+            active_file = bytearray(32)
+            active_file[:8] = b"ACTIVE  "
+            active_file[8:11] = b"TXT"
+            active_file[11] = 0x20
+            struct.pack_into("<H", active_file, 26, DELETED_DIRECTORY_CLUSTER)
+            struct.pack_into("<I", active_file, 28, 1)
+            with image.open("r+b") as handle:
+                handle.seek(deleted_directory_offset + 32)
+                handle.write(active_file)
+            output = root / "recovered"
+
+            result = recover_deleted_fat32(image, output, scan_deleted_directories=True)
+
+            self.assertFalse(any(row["parent_deleted_directory"] for row in result.rows))
+            self.assertTrue(
+                any("active file inside a scanned deleted directory shares a cluster" in item for item in result.warnings)
+            )
+
     def test_reconstructs_deleted_long_filename_from_adjacent_slots(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

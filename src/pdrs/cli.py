@@ -40,11 +40,19 @@ def recover_fat32_deleted(
         "--reassemble-fragmented",
         help="Opt in to reassembling complete surviving FAT chains after active-file overlap checks.",
     ),
+    scan_deleted_directories: bool = typer.Option(
+        False,
+        "--scan-deleted-directories",
+        help="Opt in to scanning direct deleted-file entries inside complete, non-overlapping deleted directories.",
+    ),
 ) -> None:
-    """Experimental: recover deleted FAT32 entries; fragmented-chain reassembly is opt-in."""
+    """Experimental: recover FAT32 deleted entries; risky modes are opt-in."""
     try:
         result = recover_deleted_fat32(
-            image, output, reassemble_fragmented=reassemble_fragmented
+            image,
+            output,
+            reassemble_fragmented=reassemble_fragmented,
+            scan_deleted_directories=scan_deleted_directories,
         )
         manifest = write_manifest(output, result.rows)
         evaluation = None

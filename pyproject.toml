@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pdrs-recovery-study"
-version = "0.17.0"
-description = "Read-only file carving and experimental FAT32 deleted-entry recovery for data recovery studies"
+version = "0.18.0"
+description = "Read-only file carving and experimental FAT32 deleted-entry and directory recovery for data recovery studies"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = ["typer>=0.12,<1"]

@@ -17,6 +17,8 @@ MAX_DIRECTORY_CHAIN_BYTES = 64 * 1024 * 1024
 MAX_TOTAL_DIRECTORY_BYTES = 256 * 1024 * 1024
 MAX_DIRECTORY_COUNT = 4096
 MAX_DIRECTORY_DEPTH = 32
+MAX_DELETED_DIRECTORY_COUNT = 256
+MAX_DELETED_DIRECTORY_BYTES = 64 * 1024 * 1024
 MAX_RECOVERED_FILE_BYTES = 256 * 1024 * 1024
 MAX_TOTAL_RECOVERED_BYTES = 1024 * 1024 * 1024
 MAX_ACTIVE_FILE_REFERENCE_CLUSTERS = 1_000_000
@@ -203,6 +205,165 @@ def _source_extents(
             extents.append((offset, length))
         remaining -= length
     return extents if remaining == 0 else None
+
+
+def _scan_deleted_directory_chains(
+    image: mmap.mmap,
+    *,
+    fat_start: int,
+    fat_bytes: int,
+    cluster_count: int,
+    cluster_size: int,
+    data_start: int,
+    data_end: int,
+    deleted_directories: list[tuple[int, int, int, bytes]],
+    active_directory_clusters: set[int],
+    active_file_clusters: set[int],
+) -> tuple[
+    list[tuple[int, int, int, bytes, str | None, str, bool, int | None]],
+    list[tuple[int, int, int]],
+    set[int],
+    list[str],
+    int,
+    int,
+]:
+    """Read direct deleted-file entries from bounded, non-overlapping deleted directories."""
+    candidates: list[tuple[int, int, int, bytes, str | None, str, bool, int | None]] = []
+    active_file_entries: list[tuple[int, int, int]] = []
+    deleted_directory_clusters: set[int] = set()
+    warnings: list[str] = []
+    scanned_directories = 0
+    scanned_bytes = 0
+    candidate_limit_reported = False
+
+    for directory_entry_offset, _parent_cluster, parent_depth, entry in deleted_directories:
+        if scanned_directories >= MAX_DELETED_DIRECTORY_COUNT:
+            _add_warning(
+                warnings,
+                f"Stopped after the {MAX_DELETED_DIRECTORY_COUNT}-deleted-directory safety limit.",
+            )
+            break
+        first_cluster = _entry_cluster(entry)
+        if first_cluster < 2 or first_cluster >= cluster_count + 2:
+            _add_warning(
+                warnings,
+                f"Deleted directory at entry {directory_entry_offset} has an invalid first cluster; skipped.",
+            )
+            continue
+        try:
+            chain = _directory_chain(
+                image,
+                fat_start=fat_start,
+                fat_bytes=fat_bytes,
+                start_cluster=first_cluster,
+                cluster_count=cluster_count,
+                cluster_size=cluster_size,
+            )
+        except ValueError as error:
+            _add_warning(
+                warnings,
+                f"Deleted directory at entry {directory_entry_offset} was skipped: {error}",
+            )
+            continue
+        chain_bytes = len(chain) * cluster_size
+        if scanned_bytes + chain_bytes > MAX_DELETED_DIRECTORY_BYTES:
+            _add_warning(
+                warnings,
+                "Stopped before exceeding the 64 MiB deleted-directory scan limit.",
+            )
+            break
+        conflict = next(
+            (
+                cluster
+                for cluster in chain
+                if cluster in active_directory_clusters
+                or cluster in active_file_clusters
+                or cluster in deleted_directory_clusters
+            ),
+            None,
+        )
+        if conflict is not None:
+            _add_warning(
+                warnings,
+                f"Deleted directory at entry {directory_entry_offset} overlaps active or already scanned cluster {conflict}; skipped.",
+            )
+            continue
+        deleted_directory_clusters.update(chain)
+        scanned_directories += 1
+        scanned_bytes += chain_bytes
+
+        stop_chain = False
+        pending_lfn_slots: list[bytes] = []
+        for directory_cluster in chain:
+            directory_offset = data_start + (directory_cluster - 2) * cluster_size
+            if directory_offset < data_start or directory_offset + cluster_size > data_end:
+                _add_warning(
+                    warnings,
+                    f"Deleted directory at entry {directory_entry_offset} has a cluster outside the data region; skipped.",
+                )
+                stop_chain = True
+                break
+            for child_offset in range(directory_offset, directory_offset + cluster_size, 32):
+                child_entry = image[child_offset : child_offset + 32]
+                first_byte = child_entry[0]
+                if first_byte == 0x00:
+                    pending_lfn_slots.clear()
+                    stop_chain = True
+                    break
+                attributes = child_entry[11]
+                if attributes == 0x0F:
+                    if first_byte == 0xE5:
+                        if len(pending_lfn_slots) <= MAX_LFN_ENTRIES:
+                            pending_lfn_slots.append(child_entry)
+                    else:
+                        pending_lfn_slots.clear()
+                    continue
+                if first_byte == 0xE5:
+                    if attributes & 0x18:
+                        pending_lfn_slots.clear()
+                        continue
+                    long_name, long_name_status = _decode_deleted_lfn(pending_lfn_slots)
+                    if pending_lfn_slots and long_name_status == "invalid":
+                        _add_warning(
+                            warnings,
+                            f"Deleted LFN slots before entry {child_offset} were incomplete or invalid.",
+                        )
+                    if len(candidates) < MAX_CANDIDATES:
+                        candidates.append((
+                            child_offset,
+                            directory_cluster,
+                            parent_depth + 1,
+                            child_entry,
+                            long_name,
+                            long_name_status,
+                            True,
+                            first_cluster,
+                        ))
+                    elif not candidate_limit_reported:
+                        _add_warning(
+                            warnings,
+                            f"Only the first {MAX_CANDIDATES} deleted entries will be considered.",
+                        )
+                        candidate_limit_reported = True
+                    pending_lfn_slots.clear()
+                    continue
+
+                pending_lfn_slots.clear()
+                if attributes & 0x08 or attributes & 0x10 or _is_dot_directory(child_entry):
+                    continue
+                file_size = struct.unpack_from("<I", child_entry, 28)[0]
+                if file_size:
+                    active_file_entries.append((child_offset, _entry_cluster(child_entry), file_size))
+            if stop_chain:
+                break
+    return (
+        candidates,
+        active_file_entries,
+        deleted_directory_clusters,
+        warnings,
+        scanned_directories,
+        scanned_bytes,
+    )
 
 
 def _directory_chain(
@@ -408,6 +569,7 @@ def _recover_volume(
     rows: list[dict[str, Any]],
     *,
     reassemble_fragmented: bool = False,
+    scan_deleted_directories: bool = False,
 ) -> tuple[int, list[str], int, int]:
     warnings: list[str] = []
     geometry = _volume_geometry(image, volume, available_bytes)
@@ -423,8 +585,12 @@ def _recover_volume(
     depth_limit_reported = False
     count_limit_reported = False
     candidate_limit_reported = False
+    deleted_directory_limit_reported = False
     directory_scan_complete = True
-    deleted_entries: list[tuple[int, int, int, bytes, str | None, str]] = []
+    deleted_entries: list[
+        tuple[int, int, int, bytes, str | None, str, bool, int | None]
+    ] = []
+    deleted_directories: list[tuple[int, int, int, bytes]] = []
     active_file_entries: list[tuple[int, int, int]] = []
 
     while pending_directories:
@@ -497,7 +663,21 @@ def _recover_volume(
                         pending_lfn_slots.clear()
                     continue
                 if first_byte == 0xE5:
-                    if attributes == 0x0F or attributes & 0x18:
+                    if attributes == 0x0F or attributes & 0x08:
+                        pending_lfn_slots.clear()
+                        continue
+                    if attributes & 0x10:
+                        if scan_deleted_directories:
+                            if len(deleted_directories) < MAX_DELETED_DIRECTORY_COUNT:
+                                deleted_directories.append(
+                                    (entry_offset, directory_cluster, depth, entry)
+                                )
+                            elif not deleted_directory_limit_reported:
+                                _add_warning(
+                                    warnings,
+                                    f"Only the first {MAX_DELETED_DIRECTORY_COUNT} deleted directory entries will be considered.",
+                                )
+                                deleted_directory_limit_reported = True
                         pending_lfn_slots.clear()
                         continue
                     deleted_seen += 1
@@ -512,6 +692,8 @@ def _recover_volume(
                             entry,
                             long_name,
                             long_name_status,
+                            False,
+                            None,
                         ))
                     elif not candidate_limit_reported:
                         _add_warning(warnings, f"Only the first {MAX_CANDIDATES} deleted entries will be considered.")
@@ -565,7 +747,7 @@ def _recover_volume(
     active_file_clusters: set[int] = set()
     active_file_map_complete = True
     recovered_data_clusters: set[int] = set()
-    if reassemble_fragmented:
+    if reassemble_fragmented or scan_deleted_directories:
         active_file_clusters, active_file_map_complete, map_warnings = _active_file_cluster_map(
             image,
             fat_start=geometry["fat_start"],
@@ -575,7 +757,80 @@ def _recover_volume(
             file_entries=active_file_entries,
         )
         warnings.extend(map_warnings)
-    for entry_offset, directory_cluster, depth, entry, long_name, long_name_status in deleted_entries:
+    deleted_directory_clusters: set[int] = set()
+    if scan_deleted_directories:
+        if not active_file_map_complete:
+            _add_warning(
+                warnings,
+                "Deleted directories were not scanned because active-file allocation could not be mapped completely.",
+            )
+        else:
+            (
+                orphan_candidates,
+                orphan_active_file_entries,
+                deleted_directory_clusters,
+                deleted_directory_warnings,
+                orphan_directory_count,
+                orphan_directory_bytes,
+            ) = _scan_deleted_directory_chains(
+                image,
+                fat_start=geometry["fat_start"],
+                fat_bytes=geometry["fat_bytes"],
+                cluster_count=geometry["cluster_count"],
+                cluster_size=cluster_size,
+                data_start=geometry["data_start"],
+                data_end=geometry["data_end"],
+                deleted_directories=deleted_directories,
+                active_directory_clusters=scanned_directory_clusters,
+                active_file_clusters=active_file_clusters,
+            )
+            warnings.extend(deleted_directory_warnings)
+            scanned_directory_count += orphan_directory_count
+            total_directory_bytes += orphan_directory_bytes
+            deleted_seen += len(orphan_candidates)
+            deleted_directory_scan_safe = True
+            if orphan_active_file_entries:
+                orphan_file_clusters, orphan_map_complete, orphan_map_warnings = _active_file_cluster_map(
+                    image,
+                    fat_start=geometry["fat_start"],
+                    fat_bytes=geometry["fat_bytes"],
+                    cluster_count=geometry["cluster_count"],
+                    cluster_size=cluster_size,
+                    file_entries=orphan_active_file_entries,
+                )
+                warnings.extend(orphan_map_warnings)
+                shared_directory_cluster = next(
+                    iter(orphan_file_clusters & deleted_directory_clusters),
+                    None,
+                )
+                if shared_directory_cluster is not None:
+                    deleted_directory_scan_safe = False
+                    _add_warning(
+                        warnings,
+                        "Deleted-directory candidates were withheld because an active file inside a scanned deleted directory shares a cluster with a scanned directory chain.",
+                    )
+                if len(active_file_clusters | orphan_file_clusters) > MAX_ACTIVE_FILE_REFERENCE_CLUSTERS:
+                    active_file_map_complete = False
+                    _add_warning(
+                        warnings,
+                        f"Active-file allocation exceeds the {MAX_ACTIVE_FILE_REFERENCE_CLUSTERS:,}-cluster combined safety limit.",
+                    )
+                else:
+                    active_file_clusters.update(orphan_file_clusters)
+                    active_file_map_complete = active_file_map_complete and orphan_map_complete
+            if deleted_directory_scan_safe:
+                deleted_entries.extend(orphan_candidates)
+    safety_checks = reassemble_fragmented or scan_deleted_directories
+    for (
+        entry_offset,
+        directory_cluster,
+        depth,
+        entry,
+        long_name,
+        long_name_status,
+        parent_deleted,
+        parent_directory_cluster,
+    ) in deleted_entries:
         if len(rows) >= MAX_CANDIDATES:
             _add_warning(warnings, f"Stopped after the {MAX_CANDIDATES}-candidate safety limit.")
             break
@@ -591,6 +846,12 @@ def _recover_volume(
         if total_recovered_bytes + file_size > MAX_TOTAL_RECOVERED_BYTES:
             _add_warning(warnings, "Stopped before exceeding the 1 GiB total-recovery safety limit.")
             break
+        if parent_deleted and not active_file_map_complete:
+            _add_warning(
+                warnings,
+                f"Deleted-file entry at {entry_offset} was skipped because active-file allocation could not be mapped completely.",
+            )
+            continue
         data_clusters: list[int] = []
         if file_size == 0:
             data_offset = geometry["data_start"]
@@ -644,6 +905,7 @@ def _recover_volume(
                         cluster
                         for cluster in data_clusters
                         if cluster in scanned_directory_clusters
+                        or cluster in deleted_directory_clusters
                         or cluster in active_file_clusters
                         or cluster in recovered_data_clusters
                     ),
@@ -652,6 +914,8 @@ def _recover_volume(
                 if conflict is not None:
                     if conflict in scanned_directory_clusters:
                         conflict_kind = "an active directory"
+                    elif conflict in deleted_directory_clusters:
+                        conflict_kind = "a scanned deleted-directory"
                     elif conflict in active_file_clusters:
                         conflict_kind = "an active file"
                     else:
@@ -700,18 +964,44 @@ def _recover_volume(
                 if data_end > geometry["data_end"] or data_end > len(image):
                     _add_warning(warnings, f"Deleted entry at {entry_offset} exceeds the contiguous data region; skipped.")
                     continue
-                end_cluster = first_cluster + required_clusters
-                overlap_index = bisect_left(sorted_directory_clusters, first_cluster)
-                if (
-                    overlap_index < len(sorted_directory_clusters)
-                    and sorted_directory_clusters[overlap_index] < end_cluster
-                ):
-                    _add_warning(
-                        warnings,
-                        f"Deleted entry at {entry_offset} overlaps an active directory cluster; skipped.",
-                    )
-                    continue
+                data_clusters = list(range(first_cluster, first_cluster + required_clusters)) if safety_checks else []
+                if not safety_checks:
+                    end_cluster = first_cluster + required_clusters
+                    overlap_index = bisect_left(sorted_directory_clusters, first_cluster)
+                    if (
+                        overlap_index < len(sorted_directory_clusters)
+                        and sorted_directory_clusters[overlap_index] < end_cluster
+                    ):
+                        _add_warning(
+                            warnings,
+                            f"Deleted entry at {entry_offset} overlaps an active directory cluster; skipped.",
+                        )
+                        continue
                 source_extents = [(data_offset, file_size)]
+                if safety_checks:
+                    if len(recovered_data_clusters) + len(data_clusters) > MAX_RECOVERED_CLUSTER_REFERENCES:
+                        _add_warning(
+                            warnings,
+                            f"Stopped before exceeding the {MAX_RECOVERED_CLUSTER_REFERENCES:,}-cluster overlap-tracking limit.",
+                        )
+                        break
+                    conflict = next(
+                        (
+                            cluster
+                            for cluster in data_clusters
+                            if cluster in scanned_directory_clusters
+                            or cluster in deleted_directory_clusters
+                            or cluster in active_file_clusters
+                            or cluster in recovered_data_clusters
+                        ),
+                        None,
+                    )
+                    if conflict is not None:
+                        _add_warning(
+                            warnings,
+                            f"Deleted entry at {entry_offset} overlaps protected cluster {conflict}; skipped.",
+                        )
+                        continue
 
         data_offset = source_extents[0][0] if source_extents else geometry["data_start"]
         end_offset_exclusive = (
@@ -738,7 +1028,7 @@ def _recover_volume(
             raise
         digest_hex = digest.hexdigest()
         total_recovered_bytes += file_size
-        if reassemble_fragmented:
+        if safety_checks:
             recovered_data_clusters.update(data_clusters)
         layout_note = {
             "zero_length": "zero-length file; no data bytes were read",
@@ -773,9 +1063,15 @@ def _recover_volume(
             "directory_depth": depth,
             "original_long_filename": long_name or "",
             "long_filename_status": long_name_status,
+            "parent_deleted_directory": parent_deleted,
+            "parent_directory_cluster": parent_directory_cluster,
             "first_cluster": first_cluster,
             "data_layout_status": data_layout_status,
-            "recovery_assumption": f"active directory chain; {layout_note}{lfn_note}",
+            "recovery_assumption": (
+                f"active directory chain; {layout_note}{lfn_note}"
+                if not parent_deleted
+                else f"deleted parent directory cluster {parent_directory_cluster}; {layout_note}{lfn_note}"
+            ),
         })
     return deleted_seen, warnings, scanned_directory_count, total_directory_bytes
 
@@ -785,12 +1081,14 @@ def recover_deleted_fat32(
     output_dir: Path,
     *,
     reassemble_fragmented: bool = False,
+    scan_deleted_directories: bool = False,
 ) -> Fat32RecoveryResult:
     """Recover deleted short-file entries from FAT32 root and active subdirectories.
 
     The source must be a regular raw image file. The image is memory-mapped read-only.
-    Fragmented-chain reassembly is opt-in and requires complete surviving FAT links
-    plus a complete active-file allocation map. Deleted directories are not traversed;
+    Fragmented-chain reassembly and deleted-directory scanning are opt-in. Reassembly
+    requires complete surviving FAT links plus a complete active-file allocation map.
+    Deleted-directory scanning follows only complete non-overlapping directory chains;
     LFN reconstruction is best-effort.
     """
     source = image_path.expanduser().resolve(strict=True)
@@ -840,6 +1138,7 @@ def recover_deleted_fat32(
                         destination,
                         rows,
                         reassemble_fragmented=reassemble_fragmented,
+                        scan_deleted_directories=scan_deleted_directories,
                     )
                     deleted_entries_seen += seen
                     directories_scanned += scanned_dirs
